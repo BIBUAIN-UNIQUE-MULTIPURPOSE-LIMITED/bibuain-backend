@@ -31,7 +31,7 @@ const dbConnect = new DataSource({
   password: password,
   database: db_name,
   synchronize: false,
-  logging: true,
+  logging: false,
   entities: [
     User,
     Account,

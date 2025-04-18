@@ -32,7 +32,7 @@ const dbConnect = new typeorm_1.DataSource({
     password: password,
     database: db_name,
     synchronize: false,
-    logging: true,
+    logging: false,
     entities: [
         user_1.User,
         accounts_1.Account,
