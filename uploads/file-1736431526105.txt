@@ -1,0 +1,34 @@
+
+    SELECT 
+        c.company_name,
+        p.product_display_name,
+        f.face_amount as coverage_amount,
+        p.term_years,
+        p.max_year_limit,
+        p.annual AS annual_premium,
+        r.`Free Riders`,
+        r.`Paid Riders`,
+        c.company_ratings
+    FROM 
+        company_info c
+    INNER JOIN 
+        product_info p ON c.id = p.company_info_id
+    INNER JOIN 
+        face_amount f ON p.face_amount_id = f.id
+	INNER JOIN 
+		 riders r ON r.company_id = p.company_info_id
+	WHERE p.policy_type LIKE '{user input policy type like life term , whole life , critical illness}' AND  f.face_amount = {user input coverage selected by the user} AND term_years = {user input term years selected by the user} AND 
+	gender LIKE '%{user input }%' AND nicotine_status LIKE '%{user input}%'
+    ORDER BY 
+        annual_premium DESC
+	LIMIT 5 ;
+
+--------------------------------------------
+credentials:-
+DB_HOST = "146.190.247.209"
+DB_PORT = 3306  # Default MySQL port
+DB_USER = "compulife_user"
+DB_PASSWORD = "Compu_Life0509"
+DB_NAME = "prd_main"
+
+
