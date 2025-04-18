@@ -1299,7 +1299,7 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
     // 1) Fetch all "active funded" trades from platforms
     const liveTrades = await aggregateLiveTrades();
     if (liveTrades.length === 0) {
-      console.log('No live trades found.');
+      // console.log('No live trades found.');
       await queryRunner.commitTransaction();
       return [];
     }

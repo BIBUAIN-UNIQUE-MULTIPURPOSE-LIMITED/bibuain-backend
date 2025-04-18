@@ -1088,7 +1088,7 @@ const assignLiveTradesInternal = () => __awaiter(void 0, void 0, void 0, functio
         // 1) Fetch all "active funded" trades from platforms
         const liveTrades = yield aggregateLiveTrades();
         if (liveTrades.length === 0) {
-            console.log('No live trades found.');
+            // console.log('No live trades found.');
             yield queryRunner.commitTransaction();
             return [];
         }
