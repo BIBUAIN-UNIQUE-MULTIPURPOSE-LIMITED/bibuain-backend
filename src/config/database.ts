@@ -49,7 +49,7 @@ const dbConnect = new DataSource({
     Message,
   ],
   // Uncomment if you want to use migrations
-  // migrations: ["src/migration/**/*.ts"],
+  migrations: ["src/migration/**/*.ts"],
 });
 
 // Initialize database connection

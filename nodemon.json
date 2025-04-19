@@ -4,6 +4,6 @@
   "ignore": ["src/**/*.spec.ts"],
   "exec": "ts-node ./src/server.ts",
   "env": {
-    "NODE_ENV": "production"
+    "NODE_ENV": "development"
   }
 }

@@ -1,4 +1,4 @@
 /node_modules
 .env
-/src/migration/*
-!/src/migration/.gitkeep
+# /src/migration/*
+# !/src/migration/.gitkeep
