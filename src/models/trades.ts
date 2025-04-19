@@ -74,13 +74,13 @@ export class Trade {
   @Index()
   accountId!: string;
 
-  @Column({ type: "enum", enum: TradePlatform, nullable: false })
+  @Column({ type: "enum", enum: TradePlatform, nullable: true })
   platform!: TradePlatform;
 
-  @Column({ type: "enum", enum: TradeStatus, default: TradeStatus.PENDING })
+  @Column({ type: "enum", enum: TradeStatus })
   status!: TradeStatus;
 
-  @Column({ type: "varchar", nullable: false })
+  @Column({ type: "varchar", nullable: true })
   tradeStatus!: string;
 
   @Column({ type: "json", nullable: true })
@@ -96,11 +96,7 @@ export class Trade {
     type: "numeric",
     precision: 20,
     scale: 2,
-    nullable: false,
-    transformer: {
-      to: (value: number) => value?.toString(),
-      from: (value: string) => parseFloat(value),
-    },
+    nullable: true,
   })
   amount!: number;
 
@@ -108,11 +104,7 @@ export class Trade {
     type: "numeric",
     precision: 20,
     scale: 8,
-    nullable: false,
-    transformer: {
-      to: (value: number) => value?.toString(),
-      from: (value: string) => parseFloat(value),
-    },
+    nullable: true,
   })
   cryptoAmountRequested!: number;
 
@@ -120,11 +112,7 @@ export class Trade {
     type: "numeric",
     precision: 20,
     scale: 8,
-    nullable: false,
-    transformer: {
-      to: (value: number) => value?.toString(),
-      from: (value: string) => parseFloat(value),
-    },
+    nullable: true,
   })
   cryptoAmountTotal!: number;
 
@@ -132,18 +120,14 @@ export class Trade {
     type: "numeric",
     precision: 20,
     scale: 8,
-    nullable: false,
-    transformer: {
-      to: (value: number) => value?.toString(),
-      from: (value: string) => parseFloat(value),
-    },
+    nullable: true,
   })
   feeCryptoAmount!: number;
 
-  @Column({ type: "boolean", default: false })
+  @Column({ type: "boolean", default: true })
   flagged!: boolean;
 
-  @Column({ type: "boolean", default: false })
+  @Column({ type: "boolean", default: true })
   isEscalated!: boolean;
 
   @Column({ type: "text", nullable: true })
@@ -159,33 +143,29 @@ export class Trade {
     type: "numeric",
     precision: 10,
     scale: 2,
-    nullable: false,
-    transformer: {
-      to: (value: number) => value?.toString(),
-      from: (value: string) => parseFloat(value),
-    },
+    nullable: true,
   })
   feePercentage!: number;
 
-  @Column({ type: "varchar", length: 100, nullable: false })
+  @Column({ type: "varchar", length: 100, nullable: true })
   sourceId!: string;
 
-  @Column({ type: "varchar", length: 100, nullable: false })
+  @Column({ type: "varchar", length: 100, nullable: true })
   responderUsername!: string;
 
-  @Column({ type: "varchar", length: 100, nullable: false })
+  @Column({ type: "varchar", length: 100, nullable: true })
   ownerUsername!: string;
 
-  @Column({ type: "varchar", length: 100, nullable: false })
+  @Column({ type: "varchar", length: 100, nullable: true })
   paymentMethod!: string;
 
   @Column({ type: "varchar", length: 2, nullable: true })
   locationIso?: string;
 
-  @Column({ type: "varchar", length: 3, nullable: false })
+  @Column({ type: "varchar", length: 3, nullable: true })
   fiatCurrency!: string;
 
-  @Column({ type: "varchar", length: 10, nullable: false })
+  @Column({ type: "varchar", length: 10, nullable: true })
   cryptoCurrencyCode!: string;
 
   @Column({ type: "boolean", default: false })
@@ -199,10 +179,6 @@ export class Trade {
     precision: 10,
     scale: 2,
     nullable: true,
-    transformer: {
-      to: (value: number | undefined) => value?.toString(),
-      from: (value: string | null) => (value ? parseFloat(value) : undefined),
-    },
   })
   margin?: number;
 
@@ -211,10 +187,6 @@ export class Trade {
     precision: 20,
     scale: 2,
     nullable: true,
-    transformer: {
-      to: (value: number | undefined) => value?.toString(),
-      from: (value: string | null) => (value ? parseFloat(value) : undefined),
-    },
   })
   dollarRate?: number;
 
@@ -222,11 +194,7 @@ export class Trade {
     type: "numeric",
     precision: 20,
     scale: 8,
-    nullable: true,
-    transformer: {
-      to: (value: number | undefined) => value?.toString(),
-      from: (value: string | null) => (value ? parseFloat(value) : undefined),
-    },
+    nullable: true
   })
   btcRate?: number;
 
@@ -235,10 +203,6 @@ export class Trade {
     precision: 20,
     scale: 8,
     nullable: true,
-    transformer: {
-      to: (value: number | undefined) => value?.toString(),
-      from: (value: string | null) => (value ? parseFloat(value) : undefined),
-    },
   })
   btcAmount?: number;
 

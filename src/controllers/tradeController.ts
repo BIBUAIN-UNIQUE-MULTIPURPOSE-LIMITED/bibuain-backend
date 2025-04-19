@@ -2472,7 +2472,7 @@ export const getAllTrades = async (
     const qb = tradeRepo
       .createQueryBuilder("trade")
       .leftJoinAndSelect("trade.assignedPayer", "assignedPayer")
-      .where("trade.status = :active_funded", { pending: TradeStatus.ACTIVE_FUNDED })
+      .where("trade.status = :active_funded", { active_funded: TradeStatus.ACTIVE_FUNDED })
       .orderBy("trade.createdAt", "ASC")
       .skip(skip)
       .take(limit);
@@ -2608,7 +2608,7 @@ export const getUnfinishedTrades = async (req: Request, res: Response, next: Nex
 
 export const updateCapRate = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { btcngnrate, usdtngnrate, marketCap } = req.body;
+    const { btcngnrate, marketCap } = req.body;
 
     const ratesRepo = dbConnect.getRepository(Rates);
     const existingRates = await ratesRepo.findOne({ where: {} });
@@ -2619,10 +2619,6 @@ export const updateCapRate = async (req: Request, res: Response, next: NextFunct
 
     if (btcngnrate !== undefined) {
       existingRates.btcngnrate = btcngnrate;
-    }
-
-    if (usdtngnrate !== undefined) {
-      existingRates.usdtNgnRate = usdtngnrate;
     }
     
     // Add handling for marketCap

@@ -82,15 +82,15 @@ __decorate([
     __metadata("design:type", String)
 ], Trade.prototype, "accountId", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: "enum", enum: TradePlatform, nullable: false }),
+    (0, typeorm_1.Column)({ type: "enum", enum: TradePlatform, nullable: true }),
     __metadata("design:type", String)
 ], Trade.prototype, "platform", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: "enum", enum: TradeStatus, default: TradeStatus.PENDING }),
+    (0, typeorm_1.Column)({ type: "enum", enum: TradeStatus }),
     __metadata("design:type", String)
 ], Trade.prototype, "status", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: "varchar", nullable: false }),
+    (0, typeorm_1.Column)({ type: "varchar", nullable: true }),
     __metadata("design:type", String)
 ], Trade.prototype, "tradeStatus", void 0);
 __decorate([
@@ -110,11 +110,7 @@ __decorate([
         type: "numeric",
         precision: 20,
         scale: 2,
-        nullable: false,
-        transformer: {
-            to: (value) => value === null || value === void 0 ? void 0 : value.toString(),
-            from: (value) => parseFloat(value),
-        },
+        nullable: true,
     }),
     __metadata("design:type", Number)
 ], Trade.prototype, "amount", void 0);
@@ -123,11 +119,7 @@ __decorate([
         type: "numeric",
         precision: 20,
         scale: 8,
-        nullable: false,
-        transformer: {
-            to: (value) => value === null || value === void 0 ? void 0 : value.toString(),
-            from: (value) => parseFloat(value),
-        },
+        nullable: true,
     }),
     __metadata("design:type", Number)
 ], Trade.prototype, "cryptoAmountRequested", void 0);
@@ -136,11 +128,7 @@ __decorate([
         type: "numeric",
         precision: 20,
         scale: 8,
-        nullable: false,
-        transformer: {
-            to: (value) => value === null || value === void 0 ? void 0 : value.toString(),
-            from: (value) => parseFloat(value),
-        },
+        nullable: true,
     }),
     __metadata("design:type", Number)
 ], Trade.prototype, "cryptoAmountTotal", void 0);
@@ -149,20 +137,16 @@ __decorate([
         type: "numeric",
         precision: 20,
         scale: 8,
-        nullable: false,
-        transformer: {
-            to: (value) => value === null || value === void 0 ? void 0 : value.toString(),
-            from: (value) => parseFloat(value),
-        },
+        nullable: true,
     }),
     __metadata("design:type", Number)
 ], Trade.prototype, "feeCryptoAmount", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: "boolean", default: false }),
+    (0, typeorm_1.Column)({ type: "boolean", default: true }),
     __metadata("design:type", Boolean)
 ], Trade.prototype, "flagged", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: "boolean", default: false }),
+    (0, typeorm_1.Column)({ type: "boolean", default: true }),
     __metadata("design:type", Boolean)
 ], Trade.prototype, "isEscalated", void 0);
 __decorate([
@@ -182,28 +166,24 @@ __decorate([
         type: "numeric",
         precision: 10,
         scale: 2,
-        nullable: false,
-        transformer: {
-            to: (value) => value === null || value === void 0 ? void 0 : value.toString(),
-            from: (value) => parseFloat(value),
-        },
+        nullable: true,
     }),
     __metadata("design:type", Number)
 ], Trade.prototype, "feePercentage", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: "varchar", length: 100, nullable: false }),
+    (0, typeorm_1.Column)({ type: "varchar", length: 100, nullable: true }),
     __metadata("design:type", String)
 ], Trade.prototype, "sourceId", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: "varchar", length: 100, nullable: false }),
+    (0, typeorm_1.Column)({ type: "varchar", length: 100, nullable: true }),
     __metadata("design:type", String)
 ], Trade.prototype, "responderUsername", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: "varchar", length: 100, nullable: false }),
+    (0, typeorm_1.Column)({ type: "varchar", length: 100, nullable: true }),
     __metadata("design:type", String)
 ], Trade.prototype, "ownerUsername", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: "varchar", length: 100, nullable: false }),
+    (0, typeorm_1.Column)({ type: "varchar", length: 100, nullable: true }),
     __metadata("design:type", String)
 ], Trade.prototype, "paymentMethod", void 0);
 __decorate([
@@ -211,11 +191,11 @@ __decorate([
     __metadata("design:type", String)
 ], Trade.prototype, "locationIso", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: "varchar", length: 3, nullable: false }),
+    (0, typeorm_1.Column)({ type: "varchar", length: 3, nullable: true }),
     __metadata("design:type", String)
 ], Trade.prototype, "fiatCurrency", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: "varchar", length: 10, nullable: false }),
+    (0, typeorm_1.Column)({ type: "varchar", length: 10, nullable: true }),
     __metadata("design:type", String)
 ], Trade.prototype, "cryptoCurrencyCode", void 0);
 __decorate([
@@ -232,10 +212,6 @@ __decorate([
         precision: 10,
         scale: 2,
         nullable: true,
-        transformer: {
-            to: (value) => value === null || value === void 0 ? void 0 : value.toString(),
-            from: (value) => (value ? parseFloat(value) : undefined),
-        },
     }),
     __metadata("design:type", Number)
 ], Trade.prototype, "margin", void 0);
@@ -245,10 +221,6 @@ __decorate([
         precision: 20,
         scale: 2,
         nullable: true,
-        transformer: {
-            to: (value) => value === null || value === void 0 ? void 0 : value.toString(),
-            from: (value) => (value ? parseFloat(value) : undefined),
-        },
     }),
     __metadata("design:type", Number)
 ], Trade.prototype, "dollarRate", void 0);
@@ -257,11 +229,7 @@ __decorate([
         type: "numeric",
         precision: 20,
         scale: 8,
-        nullable: true,
-        transformer: {
-            to: (value) => value === null || value === void 0 ? void 0 : value.toString(),
-            from: (value) => (value ? parseFloat(value) : undefined),
-        },
+        nullable: true
     }),
     __metadata("design:type", Number)
 ], Trade.prototype, "btcRate", void 0);
@@ -271,10 +239,6 @@ __decorate([
         precision: 20,
         scale: 8,
         nullable: true,
-        transformer: {
-            to: (value) => value === null || value === void 0 ? void 0 : value.toString(),
-            from: (value) => (value ? parseFloat(value) : undefined),
-        },
     }),
     __metadata("design:type", Number)
 ], Trade.prototype, "btcAmount", void 0);

@@ -11,21 +11,17 @@ export class Rates {
   @PrimaryGeneratedColumn("uuid")
   id!: string;
 
-  @Column({ type: "numeric", precision: 50, scale: 8, nullable: false })
+  @Column({ type: "numeric", precision: 50, scale: 8, nullable: true })
   sellingPrice!: string;
 
-  @Column({ type: "numeric", precision: 50, scale: 8, nullable: false })
+  @Column({ type: "numeric", precision: 50, scale: 8, nullable: true })
   usdtNgnRate!: string;
 
   @Column({
     type: "numeric",
     precision: 20,
     scale: 2,
-    default: 0,
-    transformer: {
-      to: (value: number) => value.toString(),
-      from: (value: string) => parseFloat(value),
-    },
+    nullable: true,
   })
   marketcap!: number;
 
@@ -33,11 +29,7 @@ export class Rates {
     type: "numeric",
     precision: 20,
     scale: 4,
-    default: 0,
-    transformer: {
-      to: (value: number) => value.toString(),
-      from: (value: string) => parseFloat(value),
-    },
+    nullable: true,
   })
   btcngnrate!: number;
 

@@ -2121,7 +2121,7 @@ const getAllTrades = (req, res, next) => __awaiter(void 0, void 0, void 0, funct
         const qb = tradeRepo
             .createQueryBuilder("trade")
             .leftJoinAndSelect("trade.assignedPayer", "assignedPayer")
-            .where("trade.status = :active_funded", { pending: trades_1.TradeStatus.ACTIVE_FUNDED })
+            .where("trade.status = :active_funded", { active_funded: trades_1.TradeStatus.ACTIVE_FUNDED })
             .orderBy("trade.createdAt", "ASC")
             .skip(skip)
             .take(limit);
@@ -2243,7 +2243,7 @@ const getUnfinishedTrades = (req, res, next) => __awaiter(void 0, void 0, void 0
 exports.getUnfinishedTrades = getUnfinishedTrades;
 const updateCapRate = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const { btcngnrate, usdtngnrate, marketCap } = req.body;
+        const { btcngnrate, marketCap } = req.body;
         const ratesRepo = database_1.default.getRepository(rates_1.Rates);
         const existingRates = yield ratesRepo.findOne({ where: {} });
         if (!existingRates) {
@@ -2251,9 +2251,6 @@ const updateCapRate = (req, res, next) => __awaiter(void 0, void 0, void 0, func
         }
         if (btcngnrate !== undefined) {
             existingRates.btcngnrate = btcngnrate;
-        }
-        if (usdtngnrate !== undefined) {
-            existingRates.usdtNgnRate = usdtngnrate;
         }
         // Add handling for marketCap
         if (marketCap !== undefined) {

@@ -19,11 +19,11 @@ __decorate([
     __metadata("design:type", String)
 ], Rates.prototype, "id", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: "numeric", precision: 50, scale: 8, nullable: false }),
+    (0, typeorm_1.Column)({ type: "numeric", precision: 50, scale: 8, nullable: true }),
     __metadata("design:type", String)
 ], Rates.prototype, "sellingPrice", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: "numeric", precision: 50, scale: 8, nullable: false }),
+    (0, typeorm_1.Column)({ type: "numeric", precision: 50, scale: 8, nullable: true }),
     __metadata("design:type", String)
 ], Rates.prototype, "usdtNgnRate", void 0);
 __decorate([
@@ -31,11 +31,7 @@ __decorate([
         type: "numeric",
         precision: 20,
         scale: 2,
-        default: 0,
-        transformer: {
-            to: (value) => value.toString(),
-            from: (value) => parseFloat(value),
-        },
+        nullable: true,
     }),
     __metadata("design:type", Number)
 ], Rates.prototype, "marketcap", void 0);
@@ -44,11 +40,7 @@ __decorate([
         type: "numeric",
         precision: 20,
         scale: 4,
-        default: 0,
-        transformer: {
-            to: (value) => value.toString(),
-            from: (value) => parseFloat(value),
-        },
+        nullable: true,
     }),
     __metadata("design:type", Number)
 ], Rates.prototype, "btcngnrate", void 0);
