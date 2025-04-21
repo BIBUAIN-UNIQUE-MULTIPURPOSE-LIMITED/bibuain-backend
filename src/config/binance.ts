@@ -276,6 +276,42 @@ export class BinanceService {
     }
   }
 
+  /**
+ * Retrieves all positive assets (Spot, Funding, etc) via getUserAsset.
+ */
+async getUserAssets(asset?: string): Promise<AssetBalance[]> {
+  const timestamp = Date.now();
+  const params: Record<string, any> = { timestamp };
+  if (asset) {
+    params.asset = asset;
+  }
+  // optionally include BTC valuation
+  params.needBtcValuation = false;
+
+  // signature covers all params
+  const queryString = new URLSearchParams(params).toString();
+  const signature = this.createSignature(queryString);
+
+  const response = await this.apiClient.post(
+    '/sapi/v3/asset/getUserAsset',
+    null,
+    { params: { ...params, signature } }
+  );
+
+  // response.data is an array of { asset, free, locked, … }
+  const assets: any[] = response.data;
+
+  // filter out zero balances and map to your AssetBalance type
+  return assets
+    .filter(a => parseFloat(a.free) > 0 || parseFloat(a.locked) > 0)
+    .map(a => ({
+      asset:  a.asset,
+      free:   a.free,
+      locked: a.locked,
+    }));
+}
+
+
   async getAvailableBalance(asset: string): Promise<{
     free: string;
     locked: string;
@@ -287,7 +323,7 @@ export class BinanceService {
       const queryParams = asset ? `asset=${asset}&timestamp=${timestamp}` : `timestamp=${timestamp}`;
       const signature = this.createSignature(queryParams);
   
-      const response = await this.apiClient.post(`/sapi/v1/asset/get-funding-asset`, null, {
+      const response = await this.apiClient.post(`/sapi/v3/asset/getUserAsset`, null, {
         params: {
           asset: asset || undefined, // Only include if not empty
           timestamp,

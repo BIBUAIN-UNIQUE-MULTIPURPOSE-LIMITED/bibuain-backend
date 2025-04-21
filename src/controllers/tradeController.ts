@@ -1771,8 +1771,6 @@ export const getWalletBalances = async (
                     // Now fetch BTC and USDT too
                     const btcData = await service.getAvailableBalance("BTC");
                     const usdtData = await service.getAvailableBalance("USDT");
-                    const bnbData = await service.getAvailableBalance("BNB");
-                    const fdusdData = await service.getAvailableBalance("FDUSD");
                 
                     console.log(`BTC balance: ${JSON.stringify(btcData)}`);
                     console.log(`USDT balance: ${JSON.stringify(usdtData)}`);
@@ -1788,18 +1786,6 @@ export const getWalletBalances = async (
                         currency: "USDT",
                         name: "Tether",
                         balance: usdtData.total,
-                        type: "crypto",
-                      },
-                      {
-                        currency: "BNB",
-                        name: "BNB",
-                        balance: bnbData.total,
-                        type: "crypto",
-                      },
-                      {
-                        currency: "FDUSD",
-                        name: "FDUSD",
-                        balance: fdusdData.total,
                         type: "crypto",
                       },
                     ];
@@ -1895,7 +1881,7 @@ export const getWalletBalances = async (
         transformedBalances[accountId] = {
           balances: (balanceData.balances || [])
             .filter((balance: any) =>
-              ["BTC", "USDT", "BNB", "FDUSD"].includes(
+              ["BTC", "USDT"].includes(
                 (balance.currency || balance.asset).toUpperCase()
               )
             )
