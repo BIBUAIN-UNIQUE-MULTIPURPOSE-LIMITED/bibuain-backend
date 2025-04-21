@@ -77,7 +77,7 @@ export class Trade {
   @Column({ type: "enum", enum: TradePlatform, nullable: true })
   platform!: TradePlatform;
 
-  @Column({ type: "enum", enum: TradeStatus })
+  @Column({ type: "enum", enum: TradeStatus, default: TradeStatus.ACTIVE_FUNDED })
   status!: TradeStatus;
 
   @Column({ type: "varchar", nullable: true })

@@ -37,6 +37,8 @@ interface PlatformService {
 const DECIMALS: Record<string, number> = {
   BTC: 8,
   USDT: 6,
+  BNB: 8,
+  FDUSD: 8,
 };
 
 // This map tracks recently modified trades to prevent immediate reassignment
@@ -394,14 +396,14 @@ async function fetchAllOffers(
       if (service instanceof NoonesService) {
         const rawOffers = await service.listActiveOffers();
         // console.log('Raw Noones offers:', rawOffers); // Debug logging
-        
+
         offers = rawOffers.map((offer) => ({
           ...offer,
-          margin: offer.margin || offer.profit_margin, 
+          margin: offer.margin || offer.profit_margin,
           platform: "noones",
           account_username: service.accountId,
           crypto_currency_code: offer.crypto_currency_code || offer.coin_code,
-          offer_hash: offer.offer_hash || offer.id 
+          offer_hash: offer.offer_hash || offer.id
         }));
       } else if (service instanceof PaxfulService) {
         offers = await service.listOffers({ status: "active" });
@@ -414,7 +416,7 @@ async function fetchAllOffers(
           offer_hash: offer.offer_hash
         }));
       }
-      
+
       console.log(`Processed ${offers.length} offers for ${service.label}`); // Debug logging
       allOffers.push(...offers);
     } catch (error) {
@@ -447,10 +449,10 @@ export const turnOnAllOffers = async (
     for (const svc of allServices) {
       try {
 
-       await svc.turnOnAllOffers();
+        await svc.turnOnAllOffers();
 
-        platformResults.push({ 
-          platform: svc.label!, 
+        platformResults.push({
+          platform: svc.label!,
           success: true,
         });
       } catch (err: any) {
@@ -540,9 +542,9 @@ export const activateOfferController = async (
 
     // Grab your initialized services
     const services = await initializePlatformServices();
-    
+
     let result;
-    
+
     if (platform.toLowerCase() === "paxful") {
       const paxfulService = services.paxful[0];
       if (!paxfulService) {
@@ -553,7 +555,7 @@ export const activateOfferController = async (
 
       console.log(`[activateOfferController] → Activating Paxful offer ${offer_hash}`);
       result = await paxfulService.activateOffer(offer_hash);
-    } 
+    }
     else if (platform.toLowerCase() === "noones") {
       const noonesService = services.noones[0];
       if (!noonesService) {
@@ -590,26 +592,26 @@ export const activateDeactivatedOffers = async (
 
     const services = await initializePlatformServices();
     const allServices = [...services.noones, ...services.paxful];
-    
+
     const platformResults: Array<{
       platform: string;
       success: boolean;
       offersActivated: number;
       error?: string;
     }> = [];
-    
+
     for (const service of allServices) {
       try {
         console.log(`[${service.label}] → Fetching deactivated offers...`);
         const deactivatedOffers = await service.getDeactivatedOffers();
         console.log(`[${service.label}] → Found ${deactivatedOffers.length} deactivated offers`);
-        
+
         let activatedCount = 0;
-        
+
         for (const offer of deactivatedOffers) {
-          const hash =  offer.hash;
+          const hash = offer.hash;
           if (!hash) continue;
-          
+
           try {
             console.log(`  ↳ Reactivating offer ${hash}...`);
             await service.activateOffer(hash);
@@ -619,7 +621,7 @@ export const activateDeactivatedOffers = async (
             console.error(`  ✗ Failed to reactivate ${hash}:`, err);
           }
         }
-        
+
         platformResults.push({
           platform: service.label!,
           success: true,
@@ -635,9 +637,9 @@ export const activateDeactivatedOffers = async (
         });
       }
     }
-    
+
     const overallSuccess = platformResults.every(r => r.success);
-    
+
     return res.status(200).json({
       success: overallSuccess,
       message: "Processed deactivated offers across all platforms",
@@ -770,8 +772,8 @@ export const updateOffers = async (
     const {
       account_username,
       platform,
-      costprice,   
-      usdtrate,    
+      costprice,
+      usdtrate,
     } = req.body as {
       account_username: string;
       platform: string;
@@ -795,7 +797,7 @@ export const updateOffers = async (
     // Create the service instance based on the platform
     let service: PaxfulService | NoonesService;
     const platformKey = platform.toLowerCase();
-    
+
     if (platformKey === "paxful") {
       service = new PaxfulService({
         clientId: account.api_key,
@@ -818,7 +820,7 @@ export const updateOffers = async (
     // Get current rates
     const rates = await fetchPlatformRates();
     console.log("Platform rates for NGN: ", rates);
-    
+
     if (!rates[platformKey]) {
       return res.status(400).json({
         success: false,
@@ -828,15 +830,15 @@ export const updateOffers = async (
     const currentRate = rates[platformKey];
 
     // Calculate margins
-    const btcMargin = (((costprice / currentRate.btcNgnRate)-1)*100);
+    const btcMargin = (((costprice / currentRate.btcNgnRate) - 1) * 100);
     console.log("BTC Margin: ", btcMargin);
-    const usdtMargin = (((usdtrate / currentRate.usdtNgnRate)-1)*100);
+    const usdtMargin = (((usdtrate / currentRate.usdtNgnRate) - 1) * 100);
 
     console.log(`Calculated margins - BTC: ${btcMargin}, USDT: ${usdtMargin}`);
 
     // Fetch active offers for this account
     let offers: any[] = [];
-    
+
     try {
       if (platformKey === "paxful") {
         offers = await (service as PaxfulService).listOffers({ status: "active" });
@@ -848,7 +850,7 @@ export const updateOffers = async (
           offers = offers ? [offers] : [];
         }
       }
-      
+
       // console.log(`Found ${offers.length} active offers for ${platform}`);
     } catch (error) {
       console.error(`Error fetching offers for ${platform}:`, error);
@@ -868,23 +870,23 @@ export const updateOffers = async (
 
     // Update each offer
     const updateResults: any[] = [];
-    
+
     for (const offer of offers) {
       const offerId = offer.offer_hash || offer.id || offer.hash;
       if (!offerId) {
         console.warn(`No offer ID found for offer:`, offer);
         continue;
       }
-      
+
       // Determine which margin to use based on offer currency
       const offerCurrency = offer.currency || offer.coin_code || "BTC";
       const marginToApply = offerCurrency.toUpperCase() === "USDT" ? usdtMargin : btcMargin;
-      
+
       console.log(`Updating ${platform} offer ${offerId} (${offerCurrency}) with margin ${marginToApply}`);
-      
+
       try {
         const updateResult = await service.updateOffer(offerId, marginToApply);
-        
+
         // Handle different response formats
         let isSuccess = false;
         if (typeof updateResult === "boolean") {
@@ -897,7 +899,7 @@ export const updateOffers = async (
         } else if (updateResult?.success !== undefined) {
           isSuccess = updateResult.success === true;
         }
-        
+
         updateResults.push({
           offerId,
           currency: offerCurrency,
@@ -905,7 +907,7 @@ export const updateOffers = async (
           success: isSuccess,
           data: updateResult,
         });
-        
+
         console.log(`Update result for ${offerId}: ${isSuccess ? "SUCCESS" : "FAILED"}`);
       } catch (error) {
         console.error(`Error updating offer ${offerId}:`, error);
@@ -920,7 +922,7 @@ export const updateOffers = async (
     }
 
     const overallSuccess = updateResults.some(result => result.success);
-    
+
     return res.status(200).json({
       success: overallSuccess,
       message: "Offer was successfully updated",
@@ -1178,18 +1180,18 @@ const upsertLiveTrades = async (liveTrades: any[]) => {
       // Update the tradeStatus to ensure it's current
       if (existing.tradeStatus !== mapped.tradeStatus) {
         // console.log(`Trade ${mapped.tradeHash} status changed from ${existing.tradeStatus} to ${mapped.tradeStatus}`);
-        
+
         // If the trade was previously assigned but is now cancelled/completed on the platform
-        if (existing.status === TradeStatus.ASSIGNED && 
-            (mapped.tradeStatus.toLowerCase() === 'cancelled' || 
-             mapped.tradeStatus.toLowerCase() === 'completed')) {
-          
-          mapped.tradeStatus = mapped.tradeStatus.toLowerCase() === 'cancelled' 
-            ? TradeStatus.CANCELLED 
+        if (existing.status === TradeStatus.ASSIGNED &&
+          (mapped.tradeStatus.toLowerCase() === 'cancelled' ||
+            mapped.tradeStatus.toLowerCase() === 'completed')) {
+
+          mapped.tradeStatus = mapped.tradeStatus.toLowerCase() === 'cancelled'
+            ? TradeStatus.CANCELLED
             : TradeStatus.COMPLETED;
         }
       }
-      
+
       await tradeRepo.update(existing.id, mapped);
     } else {
       await tradeRepo.save(mapped);
@@ -1245,8 +1247,8 @@ const syncCancelledTrades = async (): Promise<void> => {
     where: [
       { status: TradeStatus.ACTIVE_FUNDED },
       { status: TradeStatus.ASSIGNED },
-      { 
-        tradeStatus: Not(TradeStatus.CANCELLED), 
+      {
+        tradeStatus: Not(TradeStatus.CANCELLED),
         status: Not(In([TradeStatus.COMPLETED, TradeStatus.ESCALATED])),
         isEscalated: true
       }
@@ -1256,7 +1258,7 @@ const syncCancelledTrades = async (): Promise<void> => {
   for (const t of stale) {
     if (!liveHashes.has(t.tradeHash)) {
       t.status = TradeStatus.CANCELLED;
-      t.notes  = 'Auto‐cancelled: no longer active on platform';
+      t.notes = 'Auto‐cancelled: no longer active on platform';
       t.assignedPayerId = undefined;
       await repo.save(t);
       console.log(`Auto‐cancelled trade ${t.tradeHash}`);
@@ -1270,14 +1272,14 @@ async function safeAssignTrade(tradeHash: string, processFn: () => Promise<void>
     console.log(`Trade ${tradeHash} is already being processed`);
     return;
   }
-  
+
   // Add this check
   const lastModified = recentlyModifiedTrades.get(tradeHash);
   if (lastModified && (Date.now() - lastModified < 10000)) {
     console.log(`Trade ${tradeHash} was recently modified, skipping`);
     return;
   }
-  
+
   processingLock.set(tradeHash, true);
   try {
     await processFn();
@@ -1351,7 +1353,7 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
             await queryRunner.manager.save(existing);
             console.log(`Set ${td.trade_hash} → SUCCESSFUL`);
           }
-        } else if (['cancelled','expired','disputed'].includes(lower)) {
+        } else if (['cancelled', 'expired', 'disputed'].includes(lower)) {
           if (existing.status !== TradeStatus.CANCELLED) {
             existing.status = TradeStatus.CANCELLED;
             existing.tradeStatus = td.trade_status;
@@ -1368,11 +1370,11 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
     const toAssign = liveTrades.filter(td => {
       const lower = td.trade_status.toLowerCase();
       const existing = existingMap.get(td.trade_hash);
-      
+
       // Check if this trade was recently modified (within last 10 seconds)
       const lastModified = recentlyModifiedTrades.get(td.trade_hash);
       const recentlyModified = lastModified && (currentTime - lastModified < 10000);
-      
+
       return (
         lower === 'active funded' &&
         !(existing && existing.isEscalated) &&
@@ -1486,12 +1488,12 @@ const pollAndAssignLiveTrades = async () => {
       console.log("Database not connected, skipping trade assignment cycle");
       return;
     }
-    
+
     const assigned = await assignLiveTradesInternal();
     if (assigned.length) console.log(`Assigned ${assigned.length} trades`);
   } catch (error: unknown) {
     console.error('pollAndAssignLiveTrades error:', error);
-    
+
     // Type check the error before accessing properties
     if (error instanceof Error) {
       // Now TypeScript knows this is an Error object with a message property
@@ -1513,43 +1515,33 @@ const pollAndAssignLiveTrades = async () => {
 
 setInterval(pollAndAssignLiveTrades, 2000);
 
-// const getAvailablePayers = async (): Promise<User[]> => {
-//   const userRepository = dbConnect.getRepository(User);
-//   // Instead of joining with the Shift table, we simply filter by clockedIn.
-//   const payers = await userRepository.find({
-//     where: { userType: UserType.PAYER, clockedIn: true },
-//     order: { createdAt: "ASC" },
-//   });
-//   return payers;
-// };
-
 const getAvailablePayers = async (): Promise<User[]> => {
   const userRepository = dbConnect.getRepository(User);
   const shiftRepository = dbConnect.getRepository(Shift);
-  
+
   // First, get all clocked-in payers
   const payers = await userRepository.find({
     where: { userType: UserType.PAYER, clockedIn: true },
     order: { createdAt: "ASC" },
   });
-  
+
   // Then, filter out those who are on break
   const activePayerIds = new Set<string>();
-  
+
   // Find all active shifts that are not on break
   const activeShifts = await shiftRepository.find({
-    where: { 
+    where: {
       status: ShiftStatus.ACTIVE, // Only ACTIVE shifts, not ON_BREAK
       user: { userType: UserType.PAYER }
     },
     relations: ["user"],
   });
-  
+
   // Collect IDs of users with active shifts
   activeShifts.forEach(shift => {
     activePayerIds.add(shift.user.id);
   });
-  
+
   // Filter the payers to only include those with active shifts
   return payers.filter(payer => activePayerIds.has(payer.id));
 };
@@ -1701,9 +1693,6 @@ export const sendTradeChatMessage = async (
   }
 };
 
-/**
- * Get wallet balances.
- */
 export const getWalletBalances = async (
   req: Request,
   res: Response,
@@ -1736,7 +1725,7 @@ export const getWalletBalances = async (
                 await service.initialize();
                 // Assume NoonesService.getWalletBalances() returns multiple currencies,
                 // so filter below will handle only BTC and USDT.
-                
+
                 return service.getWalletBalances();
               },
             });
@@ -1765,39 +1754,65 @@ export const getWalletBalances = async (
               },
             });
             break;
-          case "binance":
-            services.push({
-              platform: "binance",
-              label: account.account_username,
-              accountId: account.id,
-              getBalance: async () => {
-                const service = new BinanceService({
-                  apiKey: account.api_key,
-                  apiSecret: account.api_secret,
-                  label: account.account_username,
-                });
-                // Get BTC balance using your existing method
-                const btcBalance = await service.getBTCBalance();
-                // Get USDT balance using getAvailableBalance method
-                const usdtData = await service.getAvailableBalance("USDT");
-                return [
-                  {
-                    currency: "BTC",
-                    name: "Bitcoin",
-                    balance: btcBalance,
-                    type: "crypto",
-                  },
-                  {
-                    currency: "USDT",
-                    name: "Tether",
-                    balance: usdtData.total,
-                    type: "crypto",
-                  },
-                ];
-              },
-            });
-            break;
-          default:
+            case "binance":
+              services.push({
+                platform: "binance",
+                label: account.account_username,
+                accountId: account.id,
+                getBalance: async () => {
+                  try {
+                    console.log(`Initializing Binance service for account: ${account.account_username}`);
+                    const service = new BinanceService({
+                      apiKey: account.api_key,
+                      apiSecret: account.api_secret,
+                      label: account.account_username,
+                    });
+                
+                    // Now fetch BTC and USDT too
+                    const btcData = await service.getAvailableBalance("BTC");
+                    const usdtData = await service.getAvailableBalance("USDT");
+                    const bnbData = await service.getAvailableBalance("BNB");
+                    const fdusdData = await service.getAvailableBalance("FDUSD");
+                
+                    console.log(`BTC balance: ${JSON.stringify(btcData)}`);
+                    console.log(`USDT balance: ${JSON.stringify(usdtData)}`);
+                
+                    return [
+                      {
+                        currency: "BTC",
+                        name: "Bitcoin",
+                        balance: btcData.total,
+                        type: "crypto",
+                      },
+                      {
+                        currency: "USDT",
+                        name: "Tether",
+                        balance: usdtData.total,
+                        type: "crypto",
+                      },
+                      {
+                        currency: "BNB",
+                        name: "BNB",
+                        balance: bnbData.total,
+                        type: "crypto",
+                      },
+                      {
+                        currency: "FDUSD",
+                        name: "FDUSD",
+                        balance: fdusdData.total,
+                        type: "crypto",
+                      },
+                    ];
+                  } catch (error) {
+                    console.error(`Error fetching Binance balances for ${account.account_username}:`, error);
+                    throw error;
+                  }
+                },
+                
+              });
+              break;
+              
+            default:
             // Handle any unsupported platforms
             balances[account.id] = {
               error: "Platform not supported",
@@ -1840,9 +1855,35 @@ export const getWalletBalances = async (
       })
     );
 
-    // Transform balances to filter out any currencies besides BTC and USDT
     const transformedBalances: Record<string, any> = {};
     for (const [accountId, balanceData] of Object.entries(balances)) {
+      // Format balance function with special handling for each platform
+      const formatBalance = (balance: any, currency: string, platform: string) => {
+        // Extract the raw balance value - could be string or number
+        let raw = balance.free ?? balance.balance;
+      
+        // Handle specific conversions for each platform
+        let asNumber: number;
+      
+        if (platform === "paxful" && currency === "BTC") {
+          // Paxful returns satoshis
+          asNumber = typeof raw === "string" ? parseFloat(raw) / 100000000 : raw / 100000000;
+        } else {
+          asNumber = typeof raw === "string" ? parseFloat(raw) : raw;
+        }
+      
+        // Get appropriate decimal precision from lookup table
+        const precision = DECIMALS[currency] ?? 8;
+      
+        // For very small numbers, return as string to prevent scientific notation
+        if (asNumber < 0.0001) {
+          return asNumber.toFixed(precision); // Returns string
+        }
+        
+        // For larger numbers, return as number
+        return parseFloat(asNumber.toFixed(precision));
+      };
+
       if (balanceData.error) {
         transformedBalances[accountId] = {
           error: balanceData.error,
@@ -1854,20 +1895,24 @@ export const getWalletBalances = async (
         transformedBalances[accountId] = {
           balances: (balanceData.balances || [])
             .filter((balance: any) =>
-              ["BTC", "USDT"].includes(balance.currency.toUpperCase())
+              ["BTC", "USDT", "BNB", "FDUSD"].includes(
+                (balance.currency || balance.asset).toUpperCase()
+              )
             )
-            .map((balance: any) => ({
-              currency: balance.currency,
-              name: balance.name,
-              balance: balance.balance,
-              type: balance.type,
-            })),
+            .map((balance: any) => {
+              const currency = (balance.currency || balance.asset).toUpperCase();
+              return {
+                currency: currency,
+                name: balance.name || balance.asset || currency,
+                balance: formatBalance(balance, currency, balanceData.platform),
+                type: balance.type || "crypto",
+              };
+            }),
           platform: balanceData.platform,
           label: balanceData.label,
         };
       }
     }
-    
 
     return res.status(200).json({
       success: true,
@@ -1886,7 +1931,7 @@ export const getWalletBalances = async (
 // ) => {
 //   try {
 //     const { tradeId } = req.params;
- 
+
 //     if (!tradeId ) {
 //       return next(new ErrorHandler("Trade ID are required", 400));
 //     }
@@ -1929,7 +1974,7 @@ export const markTradeAsPaid = async (
 ) => {
   try {
     const { tradeId } = req.params;
- 
+
     if (!tradeId) {
       return next(new ErrorHandler("Trade ID is required", 400));
     }
@@ -2098,8 +2143,8 @@ export const getCompletedPaidTrades = async (
     let qb = tradeRepo
       .createQueryBuilder("trade")
       .leftJoinAndSelect("trade.assignedPayer", "assignedPayer")
-      .where("trade.status != :completedStatus", { 
-        completedStatus: TradeStatus.COMPLETED 
+      .where("trade.status != :completedStatus", {
+        completedStatus: TradeStatus.COMPLETED
       });
 
     if (!isPrivileged) {
@@ -2107,10 +2152,10 @@ export const getCompletedPaidTrades = async (
     } else if (typeof req.query.payerId === "string" && req.query.payerId.trim()) {
       qb = qb.andWhere("assignedPayer.id = :payerId", { payerId: req.query.payerId });
     }
-    
+
     const totalCount = await qb.getCount();
     const totalPages = Math.ceil(totalCount / limit);
-    
+
     const dbTrades = await qb
       .orderBy("trade.updatedAt", "DESC")
       .skip(skip)
@@ -2134,7 +2179,7 @@ export const getCompletedPaidTrades = async (
 
         const platformTrade = await svc.getTradeDetails(trade.tradeHash);
         if (!platformTrade) {
-          continue; 
+          continue;
         }
 
         const platformStatus = platformTrade.trade_status?.toLowerCase() || "";
@@ -2152,7 +2197,7 @@ export const getCompletedPaidTrades = async (
           if (isPaid && platformTrade.paid_at) {
             updateData.paidAt = new Date(platformTrade.paid_at);
           }
-          
+
           if (isDisputed) {
             if (platformTrade.dispute_started_at) {
               updateData.disputeStartedAt = new Date(platformTrade.dispute_started_at);
@@ -2164,7 +2209,7 @@ export const getCompletedPaidTrades = async (
               updateData.disputeReasonType = platformTrade.dispute.reason_type;
             }
           }
-          
+
           await tradeRepo.update(trade.id, updateData);
 
           paidOrDisputedTrades.push({
@@ -2214,13 +2259,13 @@ export const getCompletedPayerTrades = async (
   await queryRunner.connect();
 
   try {
-    const userId       = req?.user?.id;
-    const userType     = req?.user?.userType ?? "";
+    const userId = req?.user?.id;
+    const userType = req?.user?.userType ?? "";
     const isPrivileged = ["admin", "customer-support", "payer"].includes(userType);
 
-    const page  = parseInt((req.query.page  as string) || "1",  10);
+    const page = parseInt((req.query.page as string) || "1", 10);
     const limit = parseInt((req.query.limit as string) || "10", 10);
-    const skip  = (page - 1) * limit;
+    const skip = (page - 1) * limit;
 
     const tradeRepo = queryRunner.manager.getRepository(Trade);
 
@@ -2232,7 +2277,7 @@ export const getCompletedPayerTrades = async (
       .where(
         "(trade.status IN (:...statuses) OR LOWER(trade.tradeStatus) IN (:...statusStrings))",
         {
-          statuses:       [TradeStatus.COMPLETED, TradeStatus.PAID],
+          statuses: [TradeStatus.COMPLETED, TradeStatus.PAID],
           statusStrings: ["completed", "paid", "success"],
         }
       );
@@ -2268,7 +2313,7 @@ export const getCompletedPayerTrades = async (
 
             if (completeNow) {
               await tradeRepo.update(trade.id, {
-                status:      TradeStatus.COMPLETED,
+                status: TradeStatus.COMPLETED,
                 tradeStatus: platformStatus,
                 completedAt: platformTrade.completedAt
                   ? new Date(platformTrade.completedAt)
@@ -2282,9 +2327,9 @@ export const getCompletedPayerTrades = async (
                 : new Date();
             } else {
               await tradeRepo.update(trade.id, {
-                status:      TradeStatus.ACTIVE_FUNDED,
+                status: TradeStatus.ACTIVE_FUNDED,
                 tradeStatus: platformStatus,
-                notes:       `Platform status: ${platformStatus}`,
+                notes: `Platform status: ${platformStatus}`,
               });
 
               trade.status = TradeStatus.ACTIVE_FUNDED;
@@ -2393,13 +2438,13 @@ export const reassignTrade = async (req: Request, res: Response, next: NextFunct
 
     // Use the getAvailablePayers function to get only users who are clocked in AND not on break
     const availablePayers = await getAvailablePayers();
-    
+
     if (availablePayers.length === 0) throw new ErrorHandler("No available payers", 400);
 
     const sortedPayers = availablePayers.sort((a, b) =>
       String(a.id).localeCompare(String(b.id))
     );
-    
+
     let nextPayer: User;
     if (!trade.assignedPayerId) {
       nextPayer = sortedPayers[0];
@@ -2459,9 +2504,9 @@ export const getAllTrades = async (
   await queryRunner.connect();
 
   try {
-    const page  = parseInt((req.query.page  as string) || "1",  10);
+    const page = parseInt((req.query.page as string) || "1", 10);
     const limit = parseInt((req.query.limit as string) || "10", 10);
-    const skip  = (page - 1) * limit;
+    const skip = (page - 1) * limit;
 
     // 1) Fetch live “Active Funded” trades from platforms
     const liveTrades = await aggregateLiveTrades();
@@ -2495,15 +2540,15 @@ export const getAllTrades = async (
       // If it’s live, pull in the platform’s “live” fields
       if (isLive) {
         const live = liveTrades.find((l) => l.trade_hash === trade.tradeHash)!;
-        trade.tradeStatus        = "Active Funded";
-        trade.amount             = live.fiat_amount_requested;
+        trade.tradeStatus = "Active Funded";
+        trade.amount = live.fiat_amount_requested;
         trade.cryptoCurrencyCode = live.crypto_currency_code;
-        trade.fiatCurrency       = live.fiat_currency_code;
+        trade.fiatCurrency = live.fiat_currency_code;
       }
 
       // Now fetch chat if the platform supports it
       const svcList = services[trade.platform as keyof typeof services];
-      const svc     = svcList?.find((s) => s.accountId === trade.accountId);
+      const svc = svcList?.find((s) => s.accountId === trade.accountId);
       if (svc && typeof (svc as any).getTradeChat === "function") {
         try {
           const chat = await (svc as any).getTradeChat(trade.tradeHash);
@@ -2525,7 +2570,7 @@ export const getAllTrades = async (
       if (!dbMap.has(live.trade_hash)) {
         // find service
         const svcList = services[live.platform as keyof typeof services];
-        const svc     = svcList?.find((s) => s.accountId === live.account_id);
+        const svc = svcList?.find((s) => s.accountId === live.account_id);
         let messageCount = 0;
 
         if (svc && typeof (svc as any).getTradeChat === "function") {
@@ -2538,17 +2583,17 @@ export const getAllTrades = async (
         }
 
         enhanced.push({
-          id:                  live.trade_hash,
-          tradeHash:           live.trade_hash,
-          platform:            live.platform,
-          accountId:           live.account_id,
-          amount:              live.fiat_amount_requested,
-          status:              TradeStatus.ACTIVE_FUNDED,
-          tradeStatus:         "Active Funded",
-          createdAt:           live.created_at,
-          cryptoCurrencyCode:  live.crypto_currency_code,
-          fiatCurrency:        live.fiat_currency_code,
-          assignedPayer:       null,
+          id: live.trade_hash,
+          tradeHash: live.trade_hash,
+          platform: live.platform,
+          accountId: live.account_id,
+          amount: live.fiat_amount_requested,
+          status: TradeStatus.ACTIVE_FUNDED,
+          tradeStatus: "Active Funded",
+          createdAt: live.created_at,
+          cryptoCurrencyCode: live.crypto_currency_code,
+          fiatCurrency: live.fiat_currency_code,
+          assignedPayer: null,
           messageCount,
           isLive: true,
         });
@@ -2620,7 +2665,7 @@ export const updateCapRate = async (req: Request, res: Response, next: NextFunct
     if (btcngnrate !== undefined) {
       existingRates.btcngnrate = btcngnrate;
     }
-    
+
     // Add handling for marketCap
     if (marketCap !== undefined) {
       existingRates.marketcap = marketCap;
@@ -3029,7 +3074,7 @@ export const cancelTrade = async (req: Request, res: Response, next: NextFunctio
       where: { id: tradeId },
       lock: { mode: "pessimistic_write" },
     });
-    
+
     if (!trade) throw new ErrorHandler("Trade not found", 404);
     if (trade.status === TradeStatus.COMPLETED) {
       throw new ErrorHandler("Completed trades cannot be cancelled", 400);
@@ -3050,40 +3095,40 @@ export const cancelTrade = async (req: Request, res: Response, next: NextFunctio
 
     // Call the appropriate service based on the platform
     let cancellationResult = false;
-    
+
     if (trade.platform === "noones") {
       // Type assertion to ensure TypeScript knows these are strings
       const apiKey = account.api_key as string;
       const apiSecret = account.api_secret as string;
-      
+
       if (!apiKey || !apiSecret) {
         throw new ErrorHandler("API credentials not found for this account", 500);
       }
-      
+
       const noonesService = new NoonesService({
         apiKey,
         apiSecret,
         accountId: account.id,
         label: account.account_username,
       });
-      
+
       cancellationResult = await noonesService.cancelTrade(trade.tradeHash);
     } else if (trade.platform === "paxful") {
       // Type assertion to ensure TypeScript knows these are strings
       const clientId = account.api_key as string;
       const clientSecret = account.api_secret as string;
-      
+
       if (!clientId || !clientSecret) {
         throw new ErrorHandler("API credentials not found for this account", 500);
       }
-      
+
       const paxfulService = new PaxfulService({
         clientId,
         clientSecret,
         accountId: account.id,
         label: account.account_username,
       });
-      
+
       cancellationResult = await paxfulService.cancelTrade(trade.tradeHash);
     } else {
       throw new ErrorHandler(`Unsupported platform: ${trade.platform}`, 400);
@@ -3097,7 +3142,7 @@ export const cancelTrade = async (req: Request, res: Response, next: NextFunctio
     trade.status = TradeStatus.CANCELLED;
     trade.isEscalated = false
     await tradeRepo.save(trade);
-    
+
     await queryRunner.commitTransaction();
 
     return res.status(200).json({
