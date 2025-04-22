@@ -450,23 +450,18 @@ export class NoonesService {
     try {
       // For Noones service
       const params = new URLSearchParams();
-      params.append("is_blocked", "true"); // Request inactive offers
+      params.append("active", "false"); 
       
-      // Add any required parameters for the offer/all endpoint
-      params.append("offer_type", "buy"); // Try using offer_type instead of type
+      params.append("offer_type", "buy");
       
       const response = await this.makeAuthenticatedRequest(
         "/noones/v1/offer/all",
         params
       );
-      
-      // console.log("Noones API full response:", JSON.stringify(response, null, 2));
-    
-      
-      console.log("Deactivated offers Noones : ", response?.data?.offers.is_blocked)
-      // Original check for offers
+  
+      // console.log("Deactivated offers Noones : ", response?.data?.offers.active)
       if (response?.data?.offers) {
-        return response.data.offers.filter((offer: any) => offer.is_blocked === true);
+        return response.data.offers.filter((offer: any) => offer.active === false);
       }
       
       console.warn("No offers or trades found in Noones response:", response);

@@ -172,8 +172,10 @@ export class PaxfulService {
     return paxfulRateResponse.price;
   }
 
-  async getWalletBalance(): Promise<string> {
-    const response = await this.makeRequest("/paxful/v1/wallet/balance");
+  async getWalletBalance(cryptoCurrency: string = 'BTC'): Promise<string> {
+    const response = await this.makeRequest("/paxful/v1/wallet/balance", {
+      crypto_currency_code: cryptoCurrency
+    });
     return response.data.balance;
   }
 
@@ -351,7 +353,7 @@ export class PaxfulService {
   async getDeactivatedOffers(): Promise<any[]> {
     try {
       const params = {
-        is_blocked: "true",
+        active: "false",
         offer_type: "buy" 
       };
       
@@ -368,15 +370,15 @@ export class PaxfulService {
       
       // Log is_blocked status for each offer
       response.data.offers.forEach((offer: any, index: number) => {
-        console.log(`Offer ${index} is_blocked status:`, offer.is_blocked);
+        // console.log(`Offer ${index} active status:`, offer.active);
       });
       
       // Alternatively, log the count of blocked offers
-      const blockedOffers = response.data.offers.filter((offer: any) => offer.is_blocked === true);
-      console.log(`Found ${blockedOffers.length} blocked offers out of ${response.data.offers.length} total`);
+      const blockedOffers = response.data.offers.filter((offer: any) => offer.active === false);
+      // console.log(`Found ${blockedOffers.length} blocked offers out of ${response.data.offers.length} total`);
       
       // Return all blocked offers
-      return response.data.offers.filter((offer: any) => offer.is_blocked === true);
+      return response.data.offers.filter((offer: any) => offer.active === false);
     } catch (err: any) {
       console.error("Error fetching Paxful deactivated offers:", err);
       throw new Error(`Failed to fetch Paxful deactivated offers: ${err.message}`);
