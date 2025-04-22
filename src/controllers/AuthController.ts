@@ -556,7 +556,7 @@ export const forgotPassword: RequestHandler = async (req, res, next) => {
     await userRepo.save(user);
 
     // Send email with reset link
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    const frontendUrl = process.env.FRONTEND_URL;
     const resetLink = `${frontendUrl}/reset-password?code=${resetCode}`;
 
     await sendEmail({
