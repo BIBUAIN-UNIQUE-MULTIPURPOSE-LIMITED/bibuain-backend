@@ -124,12 +124,12 @@ export class Trade {
   })
   feeCryptoAmount!: number;
 
-  @Column({ type: "boolean", default: true })
+  @Column({ type: "boolean", default: false })
   flagged!: boolean;
-
-  @Column({ type: "boolean", default: true })
+  
+  @Column({ type: "boolean", default: false })
   isEscalated!: boolean;
-
+  
   @Column({ type: "text", nullable: true })
   escalationReason!: string | null;
 

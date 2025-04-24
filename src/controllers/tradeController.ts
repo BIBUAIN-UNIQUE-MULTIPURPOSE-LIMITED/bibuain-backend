@@ -588,52 +588,52 @@ let is_Processing = false;
 export const activateDeactivatedOffers = async () => {
   if (is_Processing) return;
   is_Processing = true;
-  
+
   try {
     // console.log('Running automated deactivated offer activation...');
-    
+
     const services = await initializePlatformServices();
     const allServices = [...services.noones, ...services.paxful];
-    
+
     let totalActivated = 0;
-    
+
     for (const service of allServices) {
       try {
         // console.log(`[${service.label}] → Fetching deactivated offers...`);
         const deactivatedOffers = await service.getDeactivatedOffers();
         // console.log(`[${service.label}] → Found ${deactivatedOffers.length} deactivated offers`);
-        
+
         let activatedCount = 0;
-        
+
         for (const offer of deactivatedOffers) {
           // Check different possible hash property names
           const hash = offer.offer_hash || offer.hash || offer.offer_id;
-          
+
           if (!hash) {
             console.warn(`Offer without hash found, skipping`);
             continue;
           }
-          
+
           try {
             // console.log(`  ↳ Reactivating offer ${hash}...`);
             await service.activateOffer(hash);
             // console.log(`  ✓ Reactivated ${hash}`);
             activatedCount++;
-            
+
             // Add slight delay to prevent rate limiting
             await new Promise(resolve => setTimeout(resolve, 500));
           } catch (err) {
             console.error(`  ✗ Failed to reactivate ${hash}:`, err);
           }
         }
-        
+
         // console.log(`[${service.label}] → Activated ${activatedCount} offers`);
         totalActivated += activatedCount;
       } catch (err) {
         console.error(`Error processing deactivated offers for ${service.label}:`, err);
       }
     }
-    
+
     if (totalActivated > 0) {
       console.log(`Total offers activated: ${totalActivated}`);
     }
@@ -1162,6 +1162,8 @@ const upsertLiveTrades = async (liveTrades: any[]) => {
       btcRate: t.fiat_price_per_btc,
       btcNgnRate: t.fiat_price_per_crypto,
       usdtNgnRate: t.crypto_current_rate_usd,
+      createdAt: new Date().toISOString(),
+      dollarRate: t.fiat_price_per_btc / t.crypto_current_rate_usd
     };
 
     const existing = await tradeRepo.findOne({ where: { tradeHash: mapped.tradeHash } });
@@ -1236,6 +1238,7 @@ const syncCancelledTrades = async (): Promise<void> => {
     where: [
       { status: TradeStatus.ACTIVE_FUNDED },
       { status: TradeStatus.ASSIGNED },
+      { status: TradeStatus.ESCALATED },
       {
         tradeStatus: Not(TradeStatus.CANCELLED),
         status: Not(In([TradeStatus.COMPLETED, TradeStatus.ESCALATED])),
@@ -1308,8 +1311,8 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
       const existing = existingMap.get(td.trade_hash);
 
       if (existing) {
-        // a) If already escalated, enforce and skip
-        if (existing.isEscalated) {
+
+        if (existing.isEscalated === true) {
           if (existing.status !== TradeStatus.ESCALATED) {
             existing.status = TradeStatus.ESCALATED;
             await queryRunner.manager.save(existing);
@@ -1596,7 +1599,7 @@ export const getTradeDetails = async (
 
     const formattedExternalTrade = {
       btcRate: externalTrade?.fiat_price_per_btc || null,
-      dollarRate: externalTrade?.fiat_price_per_crypto || null,
+      dollarRate:( externalTrade?.fiat_price_per_btc) / (externalTrade?.crypto_current_rate_usd),
       amount: externalTrade?.fiat_amount_requested || null,
       bankName: externalTrade?.bank_accounts?.to?.bank_name || "N/A",
       accountNumber: externalTrade?.bank_accounts?.to?.account_number || "N/A",
@@ -1716,84 +1719,84 @@ export const getWalletBalances = async (
               },
             });
             break;
-            case "paxful":
-              services.push({
-                platform: "paxful",
-                label: account.account_username,
-                accountId: account.id,
-                getBalance: async () => {
-                  const service = new PaxfulService({
-                    clientId: account.api_key,
-                    clientSecret: account.api_secret,
+          case "paxful":
+            services.push({
+              platform: "paxful",
+              label: account.account_username,
+              accountId: account.id,
+              getBalance: async () => {
+                const service = new PaxfulService({
+                  clientId: account.api_key,
+                  clientSecret: account.api_secret,
+                  label: account.account_username,
+                });
+
+                // Get both BTC and USDT balances
+                const btcBalance = await service.getWalletBalance('BTC');
+                const usdtBalance = await service.getWalletBalance('USDT');
+
+                return [
+                  {
+                    currency: "BTC",
+                    name: "Bitcoin",
+                    balance: btcBalance,
+                    type: "crypto",
+                  },
+                  {
+                    currency: "USDT",
+                    name: "Tether",
+                    balance: usdtBalance,
+                    type: "crypto",
+                  }
+                ];
+              },
+            });
+            break;
+          case "binance":
+            services.push({
+              platform: "binance",
+              label: account.account_username,
+              accountId: account.id,
+              getBalance: async () => {
+                try {
+                  console.log(`Initializing Binance service for account: ${account.account_username}`);
+                  const service = new BinanceService({
+                    apiKey: account.api_key,
+                    apiSecret: account.api_secret,
                     label: account.account_username,
                   });
-                  
-                  // Get both BTC and USDT balances
-                  const btcBalance = await service.getWalletBalance('BTC');
-                  const usdtBalance = await service.getWalletBalance('USDT');
-                  
+
+                  // Now fetch BTC and USDT too
+                  const btcData = await service.getAvailableBalance("BTC");
+                  const usdtData = await service.getAvailableBalance("USDT");
+
+                  console.log(`BTC balance: ${JSON.stringify(btcData)}`);
+                  console.log(`USDT balance: ${JSON.stringify(usdtData)}`);
+
                   return [
                     {
                       currency: "BTC",
                       name: "Bitcoin",
-                      balance: btcBalance,
+                      balance: btcData.total,
                       type: "crypto",
                     },
                     {
                       currency: "USDT",
                       name: "Tether",
-                      balance: usdtBalance,
+                      balance: usdtData.total,
                       type: "crypto",
-                    }
+                    },
                   ];
-                },
-              });
-              break; 
-            case "binance":
-              services.push({
-                platform: "binance",
-                label: account.account_username,
-                accountId: account.id,
-                getBalance: async () => {
-                  try {
-                    console.log(`Initializing Binance service for account: ${account.account_username}`);
-                    const service = new BinanceService({
-                      apiKey: account.api_key,
-                      apiSecret: account.api_secret,
-                      label: account.account_username,
-                    });
-                
-                    // Now fetch BTC and USDT too
-                    const btcData = await service.getAvailableBalance("BTC");
-                    const usdtData = await service.getAvailableBalance("USDT");
-                
-                    console.log(`BTC balance: ${JSON.stringify(btcData)}`);
-                    console.log(`USDT balance: ${JSON.stringify(usdtData)}`);
-                
-                    return [
-                      {
-                        currency: "BTC",
-                        name: "Bitcoin",
-                        balance: btcData.total,
-                        type: "crypto",
-                      },
-                      {
-                        currency: "USDT",
-                        name: "Tether",
-                        balance: usdtData.total,
-                        type: "crypto",
-                      },
-                    ];
-                  } catch (error) {
-                    console.error(`Error fetching Binance balances for ${account.account_username}:`, error);
-                    throw error;
-                  }
-                },
-                
-              });
-              break;
-              
-            default:
+                } catch (error) {
+                  console.error(`Error fetching Binance balances for ${account.account_username}:`, error);
+                  throw error;
+                }
+              },
+
+            });
+            break;
+
+          default:
             // Handle any unsupported platforms
             balances[account.id] = {
               error: "Platform not supported",
@@ -1842,25 +1845,25 @@ export const getWalletBalances = async (
       const formatBalance = (balance: any, currency: string, platform: string) => {
         // Extract the raw balance value - could be string or number
         let raw = balance.free ?? balance.balance;
-      
+
         // Handle specific conversions for each platform
         let asNumber: number;
-      
+
         if (platform === "paxful" && currency === "BTC") {
           // Paxful returns satoshis
           asNumber = typeof raw === "string" ? parseFloat(raw) / 100000000 : raw / 100000000;
         } else {
           asNumber = typeof raw === "string" ? parseFloat(raw) : raw;
         }
-      
+
         // Get appropriate decimal precision from lookup table
         const precision = DECIMALS[currency] ?? 8;
-      
+
         // For very small numbers, return as string to prevent scientific notation
         if (asNumber < 0.0001) {
           return asNumber.toFixed(precision); // Returns string
         }
-        
+
         // For larger numbers, return as number
         return parseFloat(asNumber.toFixed(precision));
       };
@@ -2446,11 +2449,13 @@ export const getAllTrades = async (
     const limit = parseInt((req.query.limit as string) || "10", 10);
     const skip = (page - 1) * limit;
 
-    // 1) Fetch live “Active Funded” trades from platforms
+    // 1) Fetch live "Active Funded" trades from platforms
     const liveTrades = await aggregateLiveTrades();
-    const liveHashes = liveTrades.map((t) => t.trade_hash);
+    const liveHashes = liveTrades
+      .filter(t => t.trade_status.toLowerCase() === 'active funded')
+      .map(t => t.trade_hash);
 
-    // 2) Query DB for PENDING *or* any trade whose hash is in the live list
+    // 2) Query DB for ACTIVE_FUNDED trades only
     const tradeRepo = queryRunner.manager.getRepository(Trade);
     const qb = tradeRepo
       .createQueryBuilder("trade")
@@ -2475,10 +2480,10 @@ export const getAllTrades = async (
       let messageCount = 0;
       let isLive = liveHashes.includes(trade.tradeHash);
 
-      // If it’s live, pull in the platform’s “live” fields
+      // If it's live, pull in the platform's "live" fields
       if (isLive) {
         const live = liveTrades.find((l) => l.trade_hash === trade.tradeHash)!;
-        trade.tradeStatus = "Active Funded";
+        trade.tradeStatus = TradeStatus.ACTIVE_FUNDED;
         trade.amount = live.fiat_amount_requested;
         trade.cryptoCurrencyCode = live.crypto_currency_code;
         trade.fiatCurrency = live.fiat_currency_code;
@@ -2490,7 +2495,27 @@ export const getAllTrades = async (
       if (svc && typeof (svc as any).getTradeChat === "function") {
         try {
           const chat = await (svc as any).getTradeChat(trade.tradeHash);
-          messageCount = Array.isArray(chat.messages) ? chat.messages.length : 0;
+          console.log(`Chat data structure for ${trade.tradeHash}:`, JSON.stringify(chat));
+          
+          // Handle different possible message structures
+          if (Array.isArray(chat)) {
+            messageCount = chat.length;
+          } else if (chat.messages && Array.isArray(chat.messages)) {
+            messageCount = chat.messages.length;
+          } else if (chat.data && chat.data.messages && Array.isArray(chat.data.messages)) {
+            messageCount = chat.data.messages.length;
+          } else if (typeof chat === 'object' && chat !== null) {
+            // Try to find an array somewhere in the object
+            for (const key in chat) {
+              if (Array.isArray(chat[key])) {
+                console.log(`Found messages in key "${key}" for ${trade.tradeHash}`);
+                messageCount = chat[key].length;
+                break;
+              }
+            }
+          }
+          
+          console.log(`Final message count for ${trade.tradeHash}: ${messageCount}`);
         } catch (err) {
           console.error(`Chat error for ${trade.tradeHash}:`, err);
         }
@@ -2500,12 +2525,16 @@ export const getAllTrades = async (
         ...trade,
         messageCount,
         isLive,
+        createdAt: trade.createdAt ? new Date(trade.createdAt).toISOString() : null,
+        updatedAt: trade.updatedAt ? new Date(trade.updatedAt).toISOString() : null,
       });
     }
 
     // 6) Add any *purely* live trades (not yet in DB) at the end
+    // But only include ACTIVE_FUNDED trades
     for (const live of liveTrades) {
-      if (!dbMap.has(live.trade_hash)) {
+      if (!dbMap.has(live.trade_hash) && 
+          live.trade_status.toLowerCase() === 'active funded') {
         // find service
         const svcList = services[live.platform as keyof typeof services];
         const svc = svcList?.find((s) => s.accountId === live.account_id);
@@ -2514,7 +2543,25 @@ export const getAllTrades = async (
         if (svc && typeof (svc as any).getTradeChat === "function") {
           try {
             const chat = await (svc as any).getTradeChat(live.trade_hash);
-            messageCount = Array.isArray(chat.messages) ? chat.messages.length : 0;
+            console.log(`Chat data for live ${live.trade_hash}:`, JSON.stringify(chat));
+            
+            // Handle different possible message structures
+            if (Array.isArray(chat)) {
+              messageCount = chat.length;
+            } else if (chat.messages && Array.isArray(chat.messages)) {
+              messageCount = chat.messages.length;
+            } else if (chat.data && chat.data.messages && Array.isArray(chat.data.messages)) {
+              messageCount = chat.data.messages.length;
+            } else if (typeof chat === 'object' && chat !== null) {
+              // Try to find an array somewhere in the object
+              for (const key in chat) {
+                if (Array.isArray(chat[key])) {
+                  console.log(`Found messages in key "${key}" for ${live.trade_hash}`);
+                  messageCount = chat[key].length;
+                  break;
+                }
+              }
+            }
           } catch (err) {
             console.error(`Chat error for live ${live.trade_hash}:`, err);
           }
@@ -2524,13 +2571,15 @@ export const getAllTrades = async (
           id: live.trade_hash,
           tradeHash: live.trade_hash,
           platform: live.platform,
-          accountId: live.account_id,
+          accountId: live.accountId || live.account_id,
           amount: live.fiat_amount_requested,
           status: TradeStatus.ACTIVE_FUNDED,
-          tradeStatus: "Active Funded",
-          createdAt: live.created_at,
+          createdAt: new Date().toISOString(),
           cryptoCurrencyCode: live.crypto_currency_code,
           fiatCurrency: live.fiat_currency_code,
+          ownerUsername: live.ownerUsername || live.owner_username,
+          responderUsername: live.responder_username,
+          paymentMethod: live.payment_method_name,
           assignedPayer: null,
           messageCount,
           isLive: true,
@@ -2768,7 +2817,7 @@ export const getActiveFundedTotal = async (
   try {
     const liveTrades = await aggregateLiveTrades();
     console.log(`Found ${liveTrades.length} live trades`);
-    
+
     let totalActiveFundedBTC = 0;
     let totalActiveFundedUSDT = 0;
 
@@ -2776,7 +2825,7 @@ export const getActiveFundedTotal = async (
       const code = (trade.crypto_currency_code || "").toUpperCase();
       const raw = parseFloat(trade.crypto_amount_total ?? "0");
       console.log(`Processing trade: ${trade.trade_hash}, Currency: ${code}, Raw amount: ${raw}, Status: ${trade.trade_status}`);
-      
+
       const decimals = DECIMALS[code] || 0;
       const amt = raw / 10 ** decimals;
       console.log(`Adjusted amount: ${amt}`);
@@ -3004,7 +3053,7 @@ export const getEscalatedTradeById = async (
       },
       externalTrade: externalTrade ? {
         btcRate: externalTrade.fiat_price_per_btc,
-        dollarRate: externalTrade.fiat_amount_requested,
+        dollarRate: externalTrade.fiat_price_per_btc / externalTrade?.crypto_current_rate_usd,
         amount: externalTrade.fiat_amount_requested,
         bankName: externalTrade.bank_accounts?.to?.bank_name,
         accountNumber: externalTrade.bank_accounts?.to?.account_number,

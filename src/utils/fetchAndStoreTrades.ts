@@ -52,13 +52,8 @@ interface TradeActivityLogEntry {
 
 const calculateRates = (trade: RawTrade) => {
   const btcRate = trade.fiat_price_per_btc?.toString() || "0";
-  const dollarRate = (
-    trade.crypto_current_rate_usd ||
-    trade.crypto_rate_usd ||
-    0
-  ).toString();
   const btcAmount = (trade.crypto_amount_total / 100000000).toString();
-  return { btcRate, dollarRate, btcAmount };
+  return { btcRate, btcAmount };
 };
 
 
@@ -100,7 +95,6 @@ const normalizeTrade = (
     isActiveOffer: trade.is_active_offer,
     offerHash: trade.offer_hash || undefined,
     margin: trade.margin?.toString(),
-    dollarRate: rates.dollarRate,
     btcRate: rates.btcRate,
     btcAmount: rates.btcAmount,
     completedAt: trade.completed_at ? new Date(trade.completed_at) : undefined,
