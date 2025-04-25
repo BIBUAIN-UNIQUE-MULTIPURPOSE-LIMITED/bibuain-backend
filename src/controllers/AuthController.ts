@@ -194,20 +194,20 @@ export const getCurrentUser = async (
     const user = await userRepo.findOne({ where: { id: userId } });
 
     // if (!user || !user.isEmailVerified) {
-    if (!user) {
-      return next(new ErrorHandler("Invalid email! Please try again.", 401));
-    }
-    const token = jwt.sign(
-      { id: user.id, userType: user.userType },
-      JWT_SECRET,
-      { expiresIn: TOKEN_EXPIRATION }
-    );
+    // if (!user) {
+    //   return next(new ErrorHandler("Invalid email! Please try again.", 401));
+    // }
+    // const token = jwt.sign(
+    //   { id: user.id, userType: user.userType },
+    //   JWT_SECRET,
+    //   { expiresIn: TOKEN_EXPIRATION }
+    // );
 
-    setTokenCookie(res, token);
+    // setTokenCookie(res, token);
     res.json({
       success: true,
       data: user,
-      message: `Welcome Back, ${user.fullName}`,
+      message: `Welcome Back, ${user?.fullName}`,
     });
   } catch (error) {
     next(error);
