@@ -1,5 +1,5 @@
-import { query, Router } from "express";
-import { body, param } from "express-validator";
+import { Router } from "express";
+import { body, param, query } from "express-validator";
 import {
   login,
   logout,
