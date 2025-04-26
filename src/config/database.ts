@@ -1,3 +1,4 @@
+import "reflect-metadata";
 import { DataSource } from "typeorm";
 import dotenv from "dotenv";
 import { User } from "../models/user";
@@ -21,6 +22,8 @@ const db_name = process.env.DB_NAME;
 const username = process.env.DB_USER;
 const password = process.env.DB_PASSWORD;
 const host = process.env.DB_HOST;
+
+const isProd = process.env.NODE_ENV === "production";
 
 
 const dbConnect = new DataSource({
@@ -48,13 +51,14 @@ const dbConnect = new DataSource({
     Chat,
     Message,
   ],
-  // Uncomment if you want to use migrations
-  migrations: ["src/migration/**/*.ts"],
+  migrations: isProd
+    ? ["dist/migration/**/*.js"] 
+    : ["src/migration/**/*.ts"], 
 });
 
-// Initialize database connection
-dbConnect.initialize()
-  .then(() => console.log("Database connected successfully!"))
-  .catch((error) => console.error("Database connection error:", error));
+// // Initialize database connection
+// dbConnect.initialize()
+//   .then(() => console.log("Database connected successfully!"))
+//   .catch((error) => console.error("Database connection error:", error));
 
 export default dbConnect;

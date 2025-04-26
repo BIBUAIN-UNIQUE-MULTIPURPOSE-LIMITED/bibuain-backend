@@ -583,25 +583,24 @@ export const activateOfferController = async (
   }
 };
 
-let is_Processing = false;
-
-export const activateDeactivatedOffers = async () => {
-  if (is_Processing) return;
-  is_Processing = true;
-
+export const activateDeactivatedOffers = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
-    // console.log('Running automated deactivated offer activation...');
-
+    console.log('Starting deactivated offer activation process...');
+    
     const services = await initializePlatformServices();
     const allServices = [...services.noones, ...services.paxful];
-
+    
     let totalActivated = 0;
 
     for (const service of allServices) {
       try {
-        // console.log(`[${service.label}] → Fetching deactivated offers...`);
+        console.log(`[${service.label}] → Fetching deactivated offers...`);
         const deactivatedOffers = await service.getDeactivatedOffers();
-        // console.log(`[${service.label}] → Found ${deactivatedOffers.length} deactivated offers`);
+        console.log(`[${service.label}] → Found ${deactivatedOffers.length} deactivated offers`);
 
         let activatedCount = 0;
 
@@ -615,9 +614,9 @@ export const activateDeactivatedOffers = async () => {
           }
 
           try {
-            // console.log(`  ↳ Reactivating offer ${hash}...`);
+            console.log(`  ↳ Reactivating offer ${hash}...`);
             await service.activateOffer(hash);
-            // console.log(`  ✓ Reactivated ${hash}`);
+            console.log(`  ✓ Reactivated ${hash}`);
             activatedCount++;
 
             // Add slight delay to prevent rate limiting
@@ -627,26 +626,23 @@ export const activateDeactivatedOffers = async () => {
           }
         }
 
-        // console.log(`[${service.label}] → Activated ${activatedCount} offers`);
+        console.log(`[${service.label}] → Activated ${activatedCount} offers`);
         totalActivated += activatedCount;
       } catch (err) {
         console.error(`Error processing deactivated offers for ${service.label}:`, err);
       }
     }
 
-    if (totalActivated > 0) {
-      console.log(`Total offers activated: ${totalActivated}`);
-    }
+    return res.status(200).json({
+      success: true,
+      message: `Successfully reactivated ${totalActivated} offers`,
+      totalActivated
+    });
   } catch (error) {
-    console.error("Critical error in automated offer activation:", error);
-  } finally {
-    isProcessing = false;
+    console.error("Error in activateDeactivatedOffers controller:", error);
+    return next(error);
   }
 };
-
-setInterval(activateDeactivatedOffers, 300000);
-
-activateDeactivatedOffers()
 
 export const fetchPlatformRates = async () => {
   const accountRepository = dbConnect.getRepository(Account);
@@ -1124,14 +1120,20 @@ setInterval(() => {
 
 // Helper function to check database connection
 const checkDbConnection = async (): Promise<boolean> => {
-  try {
-    await dbConnect.query("SELECT 1");
-    return true;
-  } catch (err) {
-    console.log("Database connection check failed:", err);
-    return false;
-  }
-};
+    // If DataSource hasn't finished initializing yet, skip the check
+    if (!dbConnect.isInitialized) {
+      console.warn("DB health-check skipped: DataSource not yet initialized");
+      return false;
+    }
+  
+    try {
+      await dbConnect.query("SELECT 1");
+      return true;
+    } catch (err) {
+      console.error("DB health-check failed after init:", err);
+      return false;
+    }
+  };
 
 const processingLock = new Map<string, boolean>();
 
@@ -1253,7 +1255,7 @@ const syncCancelledTrades = async (): Promise<void> => {
       t.notes = 'Auto‐cancelled: no longer active on platform';
       t.assignedPayerId = undefined;
       await repo.save(t);
-      console.log(`Auto‐cancelled trade ${t.tradeHash}`);
+      // console.log(`Auto‐cancelled trade ${t.tradeHash}`);
     }
   }
 };
