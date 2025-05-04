@@ -8,14 +8,12 @@ import { io } from "../server";
 import { Between } from "typeorm";
 
 
-// Define the scheduled start times for each shift type
 const SHIFT_TIMES = {
   [ShiftType.MORNING]: { start: "08:00", end: "15:00" },
   [ShiftType.AFTERNOON]: { start: "15:00", end: "21:00" },
   [ShiftType.NIGHT]: { start: "21:00", end: "08:00" },
 };
 
-// Helper function to determine the shift type based on the current time.
 const getShiftTypeFromTime = (date: Date): ShiftType => {
   const currentTime = date.getHours() * 100 + date.getMinutes();
   if (currentTime >= 800 && currentTime < 1500) {
@@ -27,7 +25,6 @@ const getShiftTypeFromTime = (date: Date): ShiftType => {
   }
 };
 
-// Clock In Endpoint using time-based auto-detection
 export const clockIn: RequestHandler = async (
   req: UserRequest,
   res: Response,
@@ -103,28 +100,35 @@ export const clockIn: RequestHandler = async (
   }
 };
 
-// Clock Out Endpoint (kept largely the same)
-export const clockOut = async (
+export const clockOut: RequestHandler = async (
   req: UserRequest,
   res: Response,
   next: NextFunction
-) => {
+): Promise<void> => {  // Explicitly specify return type as Promise<void>
   const userId = req.user?.id;
-  if (!userId) return next(new ErrorHandler("Unauthorized", 401));
+  if (!userId) {
+    next(new ErrorHandler("Unauthorized", 401));
+    return;  // Return early without returning a value
+  }
 
   const userRepo = dbConnect.getRepository(User);
   const shiftRepo = dbConnect.getRepository(Shift);
 
   try {
     const user = await userRepo.findOne({ where: { id: userId } });
-    if (!user) return next(new ErrorHandler("User not found", 404));
+    if (!user) {
+      next(new ErrorHandler("User not found", 404));
+      return;  // Return early without returning a value
+    }
 
     let activeShift = await shiftRepo.findOne({
       where: { user: { id: userId }, status: ShiftStatus.ACTIVE },
     });
 
-    if (!activeShift)
-      return next(new ErrorHandler("No active shift found", 404));
+    if (!activeShift) {
+      next(new ErrorHandler("No active shift found", 404));
+      return;  // Return early without returning a value
+    }
 
     const now = new Date();
 
@@ -143,8 +147,11 @@ export const clockOut = async (
       );
       activeShift.status = ShiftStatus.ENDED;
 
-      await shiftRepo.save(activeShift);
+      // First update the user's clockedIn status to false
       await userRepo.update(userId, { clockedIn: false });
+      
+      // Then save the shift
+      await shiftRepo.save(activeShift);
 
       io.emit("shiftUpdate", {
         userId: user.id,
@@ -159,38 +166,39 @@ export const clockOut = async (
       });
     } catch (shiftError) {
       console.error("Error updating shift:", shiftError);
+      // Even if there's an error with the shift, make sure the user is clocked out
+      await userRepo.update(userId, { clockedIn: false });
+      
       activeShift.status = ShiftStatus.FORCE_CLOSED;
       activeShift.clockOutTime = now;
-
+      activeShift.isClockedIn = false; // Explicitly set isClockedIn to false
+      
       await shiftRepo.save(activeShift);
-      await userRepo.update(userId, { clockedIn: false });
 
-      return next(
-        new ErrorHandler("Unexpected error. Shift forcefully ended.", 500)
-      );
+      next(new ErrorHandler("Unexpected error. Shift forcefully ended.", 500));
     }
   } catch (error) {
     console.error("Unexpected error during clock-out:", error);
     try {
+      // Make sure the user is marked as clocked out regardless of errors
+      await userRepo.update(userId, { clockedIn: false });
+      
       let activeShift = await shiftRepo.findOne({
         where: { user: { id: userId }, status: ShiftStatus.ACTIVE },
       });
       if (activeShift) {
         activeShift.status = ShiftStatus.FORCE_CLOSED;
         activeShift.clockOutTime = new Date();
+        activeShift.isClockedIn = false; // Explicitly set isClockedIn to false
         await shiftRepo.save(activeShift);
       }
-      await userRepo.update(userId, { clockedIn: false });
     } catch (cleanupError) {
       console.error("Error during shift force closure:", cleanupError);
     }
-    return next(
-      new ErrorHandler("Critical error occurred. Shift forcefully closed.", 500)
-    );
+    next(new ErrorHandler("Critical error occurred. Shift forcefully closed.", 500));
   }
-};
+}
 
-// Start Break Endpoint (unchanged)
 export const startBreak: RequestHandler = async (
   req: UserRequest,
   res: Response,
@@ -239,7 +247,6 @@ export const startBreak: RequestHandler = async (
   }
 };
 
-// End Break Endpoint (unchanged)
 export const endBreak: RequestHandler = async (
   req: UserRequest,
   res: Response,
@@ -291,7 +298,6 @@ export const endBreak: RequestHandler = async (
   }
 };
 
-// Get Shift Metrics Endpoint (unchanged)
 export const getShiftMetrics: RequestHandler = async (
   req: UserRequest,
   res: Response,
@@ -364,8 +370,6 @@ export const getShiftMetrics: RequestHandler = async (
   }
 };
 
-
-// Force End Shift Endpoint (unchanged)
 export const forceEndShift: RequestHandler = async (
   req: UserRequest,
   res: Response,
@@ -381,6 +385,8 @@ export const forceEndShift: RequestHandler = async (
     }
 
     const shiftRepo = dbConnect.getRepository(Shift);
+    const userRepo = dbConnect.getRepository(User);
+    
     const shift = await shiftRepo.findOne({
       where: { id: shiftId },
       relations: ["user"],
@@ -389,6 +395,11 @@ export const forceEndShift: RequestHandler = async (
     if (!shift) throw new ErrorHandler("Shift not found", 404);
 
     const now = new Date();
+    
+    // Update user's clockedIn status first
+    await userRepo.update(shift.user.id, { clockedIn: false });
+    
+    // Then update the shift
     shift.status = ShiftStatus.FORCE_CLOSED;
     shift.shiftEndType = ShiftEndType.ADMIN_FORCE_CLOSE;
     shift.clockOutTime = now;
@@ -403,7 +414,6 @@ export const forceEndShift: RequestHandler = async (
     );
 
     await shiftRepo.save(shift);
-    await dbConnect.getRepository(User).update(shift.user.id, { clockedIn: false });
 
     io.emit("shiftUpdate", {
       userId: shift.user.id,
@@ -436,24 +446,52 @@ export const getCurrentShift: RequestHandler = async (
     const user = await userRepo.findOne({ where: { id: userId } });
     if (!user) throw new ErrorHandler("User not found", 404);
 
-    // Determine the current shift type dynamically
     const now = new Date();
     const shiftType = getShiftTypeFromTime(now);
 
-    // Find the active shift for the user matching the calculated shift type
+    const isUserClockedIn = user.clockedIn || false;
+
     const currentShift = await shiftRepo.findOne({
       where: {
         user: { id: userId },
-        shiftType,
         status: ShiftStatus.ACTIVE,
       },
       relations: ["user"],
     });
 
-    if (!currentShift) {
-      throw new ErrorHandler("No active shift found for current session", 404);
+    if (isUserClockedIn && !currentShift) {
+      await userRepo.update(userId, { clockedIn: false });
+      
+      res.json({
+        success: true,
+        message: "No active shift found, user status corrected",
+        data: {
+          shift: null,
+          currentSession: shiftType,
+          isActive: false,
+          clockedIn: false,
+          workDuration: 0,
+          breaks: [],
+        },
+      });
+      return;
     }
 
+    if (!currentShift) {
+      res.json({
+        success: true,
+        message: "No active shift found for current session",
+        data: {
+          shift: null,
+          currentSession: shiftType,
+          isActive: false,
+          clockedIn: false,
+          workDuration: 0,
+          breaks: [],
+        },
+      });
+      return; 
+    }
     res.json({
       success: true,
       message: "Current shift retrieved successfully",
@@ -461,7 +499,7 @@ export const getCurrentShift: RequestHandler = async (
         shift: currentShift,
         currentSession: shiftType,
         isActive: currentShift.status === ShiftStatus.ACTIVE,
-        clockedIn: currentShift.isClockedIn,
+        clockedIn: currentShift.isClockedIn,  
         workDuration: currentShift.totalWorkDuration || 0,
         breaks: currentShift.breaks || [],
       },
@@ -471,7 +509,58 @@ export const getCurrentShift: RequestHandler = async (
   }
 };
 
+// export const getCurrentShift: RequestHandler = async (
+//   req: UserRequest,
+//   res: Response,
+//   next: NextFunction
+// ) => {
+//   try {
+//     const userId = req.user?.id;
+//     if (!userId) throw new ErrorHandler("Unauthorized", 401);
+
+//     const userRepo = dbConnect.getRepository(User);
+//     const shiftRepo = dbConnect.getRepository(Shift);
+
+//     const user = await userRepo.findOne({ where: { id: userId } });
+//     if (!user) throw new ErrorHandler("User not found", 404);
+
+//     // Determine the current shift type dynamically
+//     const now = new Date();
+//     const shiftType = getShiftTypeFromTime(now);
+
+//     // Find the active shift for the user matching the calculated shift type
+//     const currentShift = await shiftRepo.findOne({
+//       where: {
+//         user: { id: userId },
+//         shiftType,
+//         status: ShiftStatus.ACTIVE,
+//       },
+//       relations: ["user"],
+//     });
+
+//     if (!currentShift) {
+//       throw new ErrorHandler("No active shift found for current session", 404);
+//     }
+
+//     res.json({
+//       success: true,
+//       message: "Current shift retrieved successfully",
+//       data: {
+//         shift: currentShift,
+//         currentSession: shiftType,
+//         isActive: currentShift.status === ShiftStatus.ACTIVE,
+//         clockedIn: currentShift.isClockedIn,
+//         workDuration: currentShift.totalWorkDuration || 0,
+//         breaks: currentShift.breaks || [],
+//       },
+//     });
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
 // Helper functions for calculations
+
 const calculateWorkDuration = (
   clockIn: Date,
   clockOut: Date,

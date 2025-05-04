@@ -3,6 +3,7 @@ import { Server } from "socket.io";
 import app from "./app";
 import dbConnect from "./config/database";
 import { Notification } from "./models/notifications";
+import { Rates } from "./models/rates";
 
 // Error handling for unhandled rejections and exceptions
 process.on("unhandledRejection", (reason: any, promise: Promise<any>) => {
@@ -68,6 +69,7 @@ class OnlineUsersManager {
     }
     return false;
   }
+
 
   getOnlineUsers(): string[] {
     return Array.from(this.users);
@@ -148,6 +150,52 @@ io.on("connection", (socket) => {
       }
     }
   );
+
+  socket.on("getCostPrice", async (platform: string) => {
+    try {
+      const ratesRepo = dbConnect.getRepository(Rates);
+      const latestRate = await ratesRepo.findOne({
+        order: { createdAt: "DESC" },
+      });
+
+      if (!latestRate?.platformCostPrices) {
+        return socket.emit("costPriceUpdate", {
+          success: false,
+          message: "No cost price data found",
+        });
+      }
+
+      const costPrice = latestRate.platformCostPrices[platform.toLowerCase()];
+      if (costPrice === undefined) {
+        return socket.emit("costPriceUpdate", {
+          success: false,
+          message: `No cost price for platform ${platform}`,
+        });
+      }
+
+      socket.emit("costPriceUpdate", {
+        success: true,
+        platform,
+        costPrice,
+      });
+    } catch (err) {
+      console.error("Socket getCostPrice error:", err);
+      socket.emit("costPriceUpdate", {
+        success: false,
+        message: "Internal server error",
+      });
+    }
+  });
+
+  socket.on("watchTrade", (tradeId) => {
+    console.log(`Client ${socket.id} watching trade ${tradeId}`);
+    socket.join(`trade:${tradeId}`);
+  });
+  
+  socket.on("unwatchTrade", (tradeId) => {
+    console.log(`Client ${socket.id} stopped watching trade ${tradeId}`);
+    socket.leave(`trade:${tradeId}`);
+  });
 
   // Handle joining chat rooms
   socket.on("joinChat", (chatId: string) => {

@@ -234,10 +234,19 @@ export class Trade {
     performedAt: Date;
     details?: Record<string, any>;
   }>;
-
-  @CreateDateColumn({ type: "timestamp" })
+  
+  @CreateDateColumn({
+    type: 'timestamptz',
+    default: () => 'CURRENT_TIMESTAMP',
+    comment: 'UTC timestamp of when the row was created',
+  })
   createdAt!: Date;
 
-  @UpdateDateColumn({ type: "timestamp" })
+  @UpdateDateColumn({
+    type: 'timestamptz',
+    default: () => 'CURRENT_TIMESTAMP',
+    onUpdate: 'CURRENT_TIMESTAMP',
+    comment: 'UTC timestamp of last update',
+  })
   updatedAt!: Date;
 }

@@ -35,7 +35,8 @@ import {
   activateDeactivatedOffers,
   getOfferDetailsController,
   activateOfferController,
-  getCCstats
+  getCCstats,
+  getPlatformCostPrice
 } from "../controllers/tradeController";
 import { authenticate, roleAuth } from "../middlewares/authenticate";
 import { User, UserType } from "../models/user";
@@ -162,5 +163,7 @@ router.post('/:tradeId/cancel', cancelTrade);
 router.get('/get-ngnrates', getPlatformRates);
 
 router.get("/ccstat", roleAuth([UserType.CC]), getCCstats);
+
+router.get("/costprice/:platform", getPlatformCostPrice);
 
 export default router;

@@ -181,13 +181,13 @@ export class BinanceService {
         throw new Error('Unexpected response format from Binance API');
       }
 
-      console.log(`Received ${wallets.length} wallet entries from Binance`);
+      // console.log(`Received ${wallets.length} wallet entries from Binance`);
 
       // Find the Spot wallet
       const spotWallet = wallets.find(wallet => wallet.walletName === 'Spot');
 
       if (!spotWallet) {
-        console.log('No Spot wallet found');
+        // console.log('No Spot wallet found');
         return [];
       }
 
@@ -250,7 +250,7 @@ export class BinanceService {
         (balance) => parseFloat(balance.free) > 0 || parseFloat(balance.locked) > 0
       );
 
-      console.log(`Found ${nonZeroBalances.length} non-zero balances`);
+      // console.log(`Found ${nonZeroBalances.length} non-zero balances`);
       return nonZeroBalances;
     } catch (error: any) {
       console.error(`Failed to fetch non-zero balances for ${this.label}:`, error);

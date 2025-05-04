@@ -1,4 +1,4 @@
-name: Backend CI
+name: Backend CI + CD
 
 on:
   push:
@@ -6,12 +6,16 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  AWS_REGION: ap-southeast-1
+  APP_RUNNER_SERVICE_ARN: ${{ secrets.APP_RUNNER_SERVICE_ARN }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [18.x, 20.x, 22.x]
+        node-version: [22.x]
 
     steps:
       - uses: actions/checkout@v4
@@ -27,11 +31,37 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
       - name: Type-check
         run: npm run type-check
 
       - name: Build
         run: npm run build
 
-      #- name: Test
-      #  run: npm test
+      # - name: Test
+      #   run: npm test
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push'   # only on direct pushes to main
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Trigger App Runner deployment
+        run: |
+          aws apprunner start-deployment \
+            --service-arn $APP_RUNNER_SERVICE_ARN
+
+      - name: Confirm deployment started
+        run: |
+          echo "Deployment for App Runner service $APP_RUNNER_SERVICE_ARN has been triggered."

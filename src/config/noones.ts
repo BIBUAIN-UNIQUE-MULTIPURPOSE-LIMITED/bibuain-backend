@@ -500,7 +500,7 @@ export class NoonesService {
 
   async updateOffer(offerHash: string, margin: number): Promise<any> {
     try {
-      console.log(`[${this.label}] Updating Noones offer ${offerHash} with margin ${margin}`);
+      // console.log(`[${this.label}] Updating Noones offer ${offerHash} with margin ${margin}`);
       const params = new URLSearchParams();
       params.append("offer_hash", offerHash);
       params.append("margin", margin.toString());
@@ -510,7 +510,7 @@ export class NoonesService {
         data: { success: boolean };
       }>("/noones/v1/offer/update", params);
       
-      console.log(`[${this.label}] Noones update response:`, response);
+      // console.log(`[${this.label}] Noones update response:`, response);
       return response;
     } catch (error: any) {
       console.error(`[${this.label}] Noones offer update failed:`, error);

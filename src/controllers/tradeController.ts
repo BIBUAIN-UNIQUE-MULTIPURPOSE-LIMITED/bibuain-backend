@@ -13,6 +13,8 @@ import { In, IsNull, MoreThanOrEqual, Not } from "typeorm";
 import { createNotification } from "./notificationController";
 import { NotificationType, PriorityLevel } from "../models/notifications";
 import { Shift, ShiftStatus } from "../models/shift";
+import { Server } from "socket.io";
+import app from "../app";
 
 interface PlatformServices {
   noones: NoonesService[];
@@ -97,7 +99,6 @@ async function initializePlatformServices(): Promise<PlatformServices> {
 
   return services;
 }
-
 
 export const getAccounts = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -206,7 +207,7 @@ export const getFeedbackStats = async (
     const accountRepo = dbConnect.getRepository(Account);
     const accounts = await accountRepo.find();
 
-    console.log(`Found ${accounts.length} total accounts`);
+    // console.log(`Found ${accounts.length} total accounts`);
 
     // Filter to only include Paxful and Noones accounts
     const filteredAccounts = accounts.filter(account =>
@@ -317,7 +318,7 @@ export const getFeedbackStats = async (
             rating: 1,
           });
 
-          console.log(`Received positive feedback count for ${account.account_username}: ${positiveFeedbackCount}`);
+          // console.log(`Received positive feedback count for ${account.account_username}: ${positiveFeedbackCount}`);
         } catch (error: any) {
           console.error(`Error fetching positive feedback for ${account.account_username}:`, error);
           positiveError = error && typeof error === 'object' && 'message' in error
@@ -479,7 +480,6 @@ export const turnOnAllOffers = async (
   }
 };
 
-
 export const getOfferDetailsController = async (
   req: Request,
   res: Response,
@@ -590,17 +590,17 @@ export const activateDeactivatedOffers = async (
 ) => {
   try {
     console.log('Starting deactivated offer activation process...');
-    
+
     const services = await initializePlatformServices();
     const allServices = [...services.noones, ...services.paxful];
-    
+
     let totalActivated = 0;
 
     for (const service of allServices) {
       try {
-        console.log(`[${service.label}] → Fetching deactivated offers...`);
+        // console.log(`[${service.label}] → Fetching deactivated offers...`);
         const deactivatedOffers = await service.getDeactivatedOffers();
-        console.log(`[${service.label}] → Found ${deactivatedOffers.length} deactivated offers`);
+        // console.log(`[${service.label}] → Found ${deactivatedOffers.length} deactivated offers`);
 
         let activatedCount = 0;
 
@@ -760,25 +760,107 @@ export const updateOffers = async (
   next: NextFunction
 ) => {
   try {
-    // Extract values from the request body
-    const {
+    let {
       account_username,
       platform,
       costprice,
       usdtrate,
-    } = req.body as {
-      account_username: string;
-      platform: string;
-      costprice: number;
-      usdtrate: number;
-    };
+    } = req.body;
 
-    // console.log(`Updating offers for ${platform} account: ${account_username}`);
-    // console.log(`Parameters: costprice=${costprice}, usdtrate=${usdtrate}`);
+    // console.log("REceiveing from FE", req.body)
 
-    // Retrieve the account record
+    // Validate required fields
+    if (!account_username) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required parameter: account_username",
+      });
+    }
+
+    if (!platform) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required parameter: platform",
+      });
+    }
+
+    if (costprice === undefined || costprice === null) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required parameter: costprice",
+      });
+    }
+
+    if (usdtrate === undefined || usdtrate === null) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required parameter: usdtrate",
+      });
+    }
+
+    if (typeof costprice === 'string') {
+      costprice = parseFloat(costprice.replace(/,/g, ''));
+    }
+
+    if (typeof usdtrate === 'string') {
+      usdtrate = parseFloat(usdtrate.replace(/,/g, ''));
+    }
+
+    if (isNaN(costprice) || isNaN(usdtrate)) {
+      return res.status(400).json({
+        success: false,
+        message: "Cost price and USDT rate must be valid numbers",
+      });
+    }
+
+    const platformKey = String(platform).toLowerCase();
+
     const accountRepository = dbConnect.getRepository(Account);
-    const account = await accountRepository.findOne({ where: { account_username } });
+    // Replace the rate update section with this:
+
+    const ratesRepo = dbConnect.getRepository(Rates);
+
+    // Try to find an existing rate record
+    let latestRate = await ratesRepo.findOne({
+      where: {}, // No specific conditions - get any existing record
+      order: { createdAt: "DESC" }
+    });
+
+    if (!latestRate) {
+      // If no record exists, create a new one
+      latestRate = ratesRepo.create({
+        platformCostPrices: {}
+      });
+      // console.log(`Creating new rates record`);
+     } 
+    // else {
+    //   console.log(`Found existing rates record with ID: ${latestRate.id}`);
+    // }
+
+    // Ensure platformCostPrices exists and is an object
+    if (!latestRate.platformCostPrices || typeof latestRate.platformCostPrices !== 'object') {
+      latestRate.platformCostPrices = {};
+    }
+
+    // Update the specific platform's cost price
+    latestRate.platformCostPrices[platformKey] = costprice;
+
+    try {
+      // Save the updated record
+      await ratesRepo.save(latestRate);
+      // console.log(`Successfully updated cost price for ${platformKey} to ${costprice} in record ${latestRate.id}`);
+    } catch (error) {
+      console.error(`Failed to update cost price for ${platformKey}:`, error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to update platform cost price in database",
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+    const account = await accountRepository.findOne({
+      where: { account_username: account_username }
+    });
+
     if (!account) {
       return res.status(404).json({
         success: false,
@@ -786,9 +868,7 @@ export const updateOffers = async (
       });
     }
 
-    // Create the service instance based on the platform
     let service: PaxfulService | NoonesService;
-    const platformKey = platform.toLowerCase();
 
     if (platformKey === "paxful") {
       service = new PaxfulService({
@@ -809,9 +889,8 @@ export const updateOffers = async (
       });
     }
 
-    // Get current rates
     const rates = await fetchPlatformRates();
-    console.log("Platform rates for NGN: ", rates);
+    // console.log("Platform rates for NGN: ", rates);
 
     if (!rates[platformKey]) {
       return res.status(400).json({
@@ -821,12 +900,11 @@ export const updateOffers = async (
     }
     const currentRate = rates[platformKey];
 
-    // Calculate margins
     const btcMargin = (((costprice / currentRate.btcNgnRate) - 1) * 100);
-    console.log("BTC Margin: ", btcMargin);
+    // console.log("BTC Margin: ", btcMargin);
     const usdtMargin = (((usdtrate / currentRate.usdtNgnRate) - 1) * 100);
 
-    console.log(`Calculated margins - BTC: ${btcMargin}, USDT: ${usdtMargin}`);
+    // console.log(`Calculated margins - BTC: ${btcMargin}, USDT: ${usdtMargin}`);
 
     // Fetch active offers for this account
     let offers: any[] = [];
@@ -836,7 +914,6 @@ export const updateOffers = async (
         offers = await (service as PaxfulService).listOffers({ status: "active" });
       } else if (platformKey === "noones") {
         offers = await (service as NoonesService).listActiveOffers();
-        // Ensure offers is always an array
         if (!Array.isArray(offers)) {
           console.log("Noones offers not returned as an array, converting:", offers);
           offers = offers ? [offers] : [];
@@ -860,7 +937,6 @@ export const updateOffers = async (
       });
     }
 
-    // Update each offer
     const updateResults: any[] = [];
 
     for (const offer of offers) {
@@ -870,16 +946,14 @@ export const updateOffers = async (
         continue;
       }
 
-      // Determine which margin to use based on offer currency
       const offerCurrency = offer.currency || offer.coin_code || "BTC";
       const marginToApply = offerCurrency.toUpperCase() === "USDT" ? usdtMargin : btcMargin;
 
-      console.log(`Updating ${platform} offer ${offerId} (${offerCurrency}) with margin ${marginToApply}`);
+      // console.log(`Updating ${platform} offer ${offerId} (${offerCurrency}) with margin ${marginToApply}`);
 
       try {
         const updateResult = await service.updateOffer(offerId, marginToApply);
 
-        // Handle different response formats
         let isSuccess = false;
         if (typeof updateResult === "boolean") {
           isSuccess = updateResult;
@@ -900,7 +974,7 @@ export const updateOffers = async (
           data: updateResult,
         });
 
-        console.log(`Update result for ${offerId}: ${isSuccess ? "SUCCESS" : "FAILED"}`);
+        // console.log(`Update result for ${offerId}: ${isSuccess ? "SUCCESS" : "FAILED"}`);
       } catch (error) {
         console.error(`Error updating offer ${offerId}:`, error);
         updateResults.push({
@@ -925,6 +999,61 @@ export const updateOffers = async (
   } catch (error) {
     console.error("Error in updateOffers:", error);
     return next(error);
+  }
+};
+
+export const getPlatformCostPrice = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { platform } = req.params;
+
+    if (!platform) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Platform is required" 
+      });
+    }
+
+    const ratesRepo = dbConnect.getRepository(Rates);
+    
+    // Use proper options object structure for TypeORM
+    const latestRate = await ratesRepo.findOne({
+      where: {}, 
+      order: { createdAt: "DESC" }, 
+    });
+
+    if (!latestRate?.platformCostPrices) {
+      return res.status(404).json({
+        success: false,
+        message: "No cost price data found.",
+      });
+    }
+
+    const costPrice = latestRate.platformCostPrices[platform.toLowerCase()];
+
+    if (costPrice === undefined) {
+      return res.status(404).json({
+        success: false,
+        message: `No cost price found for platform ${platform}`,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        platform,
+        costPrice,
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching platform cost price:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error 
+    });
   }
 };
 
@@ -1103,12 +1232,10 @@ export const getCurrencyRates = async (
   }
 };
 
-// Helper function to mark a trade as recently modified
 const markTradeAsModified = (tradeId: string) => {
   recentlyModifiedTrades.set(tradeId, Date.now());
 };
 
-// Clean up old entries from the map periodically
 setInterval(() => {
   const now = Date.now();
   recentlyModifiedTrades.forEach((time, hash) => {
@@ -1118,34 +1245,107 @@ setInterval(() => {
   });
 }, 30000);
 
-// Helper function to check database connection
 const checkDbConnection = async (): Promise<boolean> => {
-    // If DataSource hasn't finished initializing yet, skip the check
-    if (!dbConnect.isInitialized) {
-      console.warn("DB health-check skipped: DataSource not yet initialized");
-      return false;
-    }
-  
-    try {
-      await dbConnect.query("SELECT 1");
-      return true;
-    } catch (err) {
-      console.error("DB health-check failed after init:", err);
-      return false;
-    }
-  };
+  // If DataSource hasn't finished initializing yet, skip the check
+  if (!dbConnect.isInitialized) {
+    console.warn("DB health-check skipped: DataSource not yet initialized");
+    return false;
+  }
+
+  try {
+    await dbConnect.query("SELECT 1");
+    return true;
+  } catch (err) {
+    console.error("DB health-check failed after init:", err);
+    return false;
+  }
+};
 
 const processingLock = new Map<string, boolean>();
+
+// const upsertLiveTrades = async (liveTrades: any[]) => {
+//   const tradeRepo = dbConnect.getRepository(Trade);
+
+//   for (const t of liveTrades) {
+//     const lower = t.trade_status.toLowerCase();
+//     // map the platform‐string to your enum
+//     const statusMap: Record<string, TradeStatus> = {
+//       'active funded': TradeStatus.ACTIVE_FUNDED,
+//       'paid': TradeStatus.PAID,
+//       'completed': TradeStatus.COMPLETED,
+//       'successful': TradeStatus.SUCCESSFUL,
+//       'cancelled': TradeStatus.CANCELLED,
+//       'expired': TradeStatus.CANCELLED,
+//       'disputed': TradeStatus.DISPUTED,
+//     };
+//     const newStatus = statusMap[lower] ?? TradeStatus.ACTIVE_FUNDED;
+
+//     // build only the fields you need to upsert
+//     const mapped: Partial<Trade> = {
+//       tradeHash: t.trade_hash,
+//       accountId: t.accountId,
+//       platform: t.platform,
+//       tradeStatus: t.trade_status,
+//       status: newStatus,
+//       amount: t.fiat_amount_requested,
+//       cryptoAmountRequested: t.crypto_amount_requested,
+//       cryptoAmountTotal: t.crypto_amount_total,
+//       feeCryptoAmount: t.fee_crypto_amount,
+//       feePercentage: t.fee_percentage,
+//       sourceId: t.source_id,
+//       responderUsername: t.responder_username,
+//       ownerUsername: t.owner_username,
+//       paymentMethod: t.payment_method_name,
+//       locationIso: t.location_iso,
+//       fiatCurrency: t.fiat_currency_code,
+//       cryptoCurrencyCode: t.crypto_currency_code,
+//       isActiveOffer: t.is_active_offer,
+//       offerHash: t.offer_hash,
+//       margin: t.margin,
+//       btcRate: t.fiat_price_per_btc,
+//       btcNgnRate: t.fiat_price_per_crypto,
+//       usdtNgnRate: t.crypto_current_rate_usd,
+//       dollarRate: t.fiat_price_per_btc / t.crypto_current_rate_usd,
+//       ...(newStatus === TradeStatus.CANCELLED || newStatus === TradeStatus.COMPLETED || newStatus === TradeStatus.SUCCESSFUL || newStatus === TradeStatus.PAID
+//         ? { assignedPayerId: undefined }
+//         : {}
+//       ),
+//     };
+
+//     const existing = await tradeRepo.findOne({ where: { tradeHash: mapped.tradeHash } });
+//     if (existing) {
+//       // only overwrite the DB row once we know the new status
+//       await tradeRepo.update(existing.id, mapped);
+//     } else {
+//       await tradeRepo.save(mapped as Trade);
+//     }
+//   }
+// };
 
 const upsertLiveTrades = async (liveTrades: any[]) => {
   const tradeRepo = dbConnect.getRepository(Trade);
 
   for (const t of liveTrades) {
-    const mapped = {
+    const lower = t.trade_status.toLowerCase();
+    // map the platform‐string to your enum
+    const statusMap: Record<string, TradeStatus> = {
+      'active funded': TradeStatus.ACTIVE_FUNDED,
+      'paid': TradeStatus.PAID,
+      'completed': TradeStatus.COMPLETED,
+      'successful': TradeStatus.SUCCESSFUL,
+      'cancelled': TradeStatus.CANCELLED,
+      'expired': TradeStatus.CANCELLED,
+      'disputed': TradeStatus.DISPUTED,
+    };
+    const newStatus = statusMap[lower] ?? TradeStatus.ACTIVE_FUNDED;
+
+    // build only the fields you need to upsert
+    const mapped: Partial<Trade> = {
       tradeHash: t.trade_hash,
       accountId: t.accountId,
       platform: t.platform,
       tradeStatus: t.trade_status,
+      status: newStatus,
       amount: t.fiat_amount_requested,
       cryptoAmountRequested: t.crypto_amount_requested,
       cryptoAmountTotal: t.crypto_amount_total,
@@ -1154,7 +1354,7 @@ const upsertLiveTrades = async (liveTrades: any[]) => {
       sourceId: t.source_id,
       responderUsername: t.responder_username,
       ownerUsername: t.owner_username,
-      paymentMethod: t.payment_method_name || null,
+      paymentMethod: t.payment_method_name,
       locationIso: t.location_iso,
       fiatCurrency: t.fiat_currency_code,
       cryptoCurrencyCode: t.crypto_currency_code,
@@ -1164,30 +1364,49 @@ const upsertLiveTrades = async (liveTrades: any[]) => {
       btcRate: t.fiat_price_per_btc,
       btcNgnRate: t.fiat_price_per_crypto,
       usdtNgnRate: t.crypto_current_rate_usd,
-      createdAt: new Date().toISOString(),
-      dollarRate: t.fiat_price_per_btc / t.crypto_current_rate_usd
+      dollarRate: t.fiat_price_per_btc / t.crypto_current_rate_usd,
+      ...(newStatus === TradeStatus.CANCELLED || newStatus === TradeStatus.COMPLETED || newStatus === TradeStatus.SUCCESSFUL || newStatus === TradeStatus.PAID
+        ? { assignedPayerId: undefined }
+        : {}
+      ),
     };
 
     const existing = await tradeRepo.findOne({ where: { tradeHash: mapped.tradeHash } });
     if (existing) {
-      // Update the tradeStatus to ensure it's current
-      if (existing.tradeStatus !== mapped.tradeStatus) {
-        // console.log(`Trade ${mapped.tradeHash} status changed from ${existing.tradeStatus} to ${mapped.tradeStatus}`);
-
-        // If the trade was previously assigned but is now cancelled/completed on the platform
-        if (existing.status === TradeStatus.ASSIGNED &&
-          (mapped.tradeStatus.toLowerCase() === 'cancelled' ||
-            mapped.tradeStatus.toLowerCase() === 'completed')) {
-
-          mapped.tradeStatus = mapped.tradeStatus.toLowerCase() === 'cancelled'
-            ? TradeStatus.CANCELLED
-            : TradeStatus.COMPLETED;
+      // Check if status is changing to emit proper event
+      const statusChanged = existing.status !== newStatus;
+      const wasAssigned = existing.assignedPayerId !== undefined;
+      
+      // Update the trade
+      await tradeRepo.update(existing.id, mapped);
+      
+      // If status changed to a terminal state, emit event
+      if (statusChanged) {
+        // Get the io instance
+        const io: Server = app.get("io");
+        
+        // Emit event for status change
+        io.emit("tradeStatusChanged", {
+          tradeId: existing.id,
+          status: newStatus,
+        });
+        
+        // For previously assigned trades that are now terminal, notify specifically
+        if (wasAssigned && (
+          newStatus === TradeStatus.CANCELLED || 
+          newStatus === TradeStatus.COMPLETED || 
+          newStatus === TradeStatus.SUCCESSFUL || 
+          newStatus === TradeStatus.PAID
+        )) {
+          // Use the emitTradeStatusChange function if available
+          if (typeof emitTradeStatusChange === 'function') {
+            emitTradeStatusChange(existing.id, newStatus, existing.assignedPayerId);
+          }
+          console.log(`Status changed for assigned trade ${existing.id}: ${existing.status} -> ${newStatus}`);
         }
       }
-
-      await tradeRepo.update(existing.id, mapped);
     } else {
-      await tradeRepo.save(mapped);
+      await tradeRepo.save(mapped as Trade);
     }
   }
 };
@@ -1218,6 +1437,51 @@ const aggregateLiveTrades = async (): Promise<any[]> => {
   await upsertLiveTrades(filtered);
   return filtered;
 };
+
+// const syncCancelledTrades = async (): Promise<void> => {
+//   const services = await initializePlatformServices();
+//   const liveHashes = new Set<string>();
+
+//   // gather all active‐funded hashes
+//   for (const list of [services.paxful, services.noones]) {
+//     for (const svc of list) {
+//       try {
+//         const trades = await svc.listActiveTrades();
+//         trades.forEach((t: any) => liveHashes.add(t.trade_hash));
+//       } catch (err) {
+//         console.error('syncCancelledTrades list error:', err);
+//       }
+//     }
+//   }
+
+//   const repo = dbConnect.getRepository(Trade);
+//   const stale = await repo.find({
+//     where: [
+//       { status: TradeStatus.ACTIVE_FUNDED },
+//       { status: TradeStatus.ASSIGNED },
+//       { status: TradeStatus.ESCALATED },
+//       {
+//         tradeStatus: Not(TradeStatus.CANCELLED),
+//         status: Not(In([TradeStatus.COMPLETED, TradeStatus.ESCALATED])),
+//         isEscalated: true
+//       }
+//     ],
+//   });
+
+//   for (const t of stale) {
+//     if (!liveHashes.has(t.tradeHash)) {
+//       // t.status = TradeStatus.CANCELLED;
+//       // // t.notes = 'Auto‐cancelled: no longer active on platform';
+//       // t.assignedPayerId = undefined;
+//       // await repo.save(t);
+//       // console.log(`Auto‐cancelled trade ${t.tradeHash}`);
+//       await repo.delete(t.id);
+//       const io: Server = app.get("io");
+//       io.emit("tradeDeleted", { tradeId: t.id });
+//       console.log(`Auto-cancelled & notified deletion of ${t.tradeHash}`); 
+//     }
+//   }
+// };
 
 const syncCancelledTrades = async (): Promise<void> => {
   const services = await initializePlatformServices();
@@ -1251,16 +1515,38 @@ const syncCancelledTrades = async (): Promise<void> => {
 
   for (const t of stale) {
     if (!liveHashes.has(t.tradeHash)) {
-      t.status = TradeStatus.CANCELLED;
-      t.notes = 'Auto‐cancelled: no longer active on platform';
-      t.assignedPayerId = undefined;
-      await repo.save(t);
-      // console.log(`Auto‐cancelled trade ${t.tradeHash}`);
+      // Store the assignedPayerId before deletion for notifications
+      const assignedPayerId = t.assignedPayerId;
+      const tradeId = t.id;
+
+      // Delete the trade
+      await repo.delete(t.id);
+      
+      // Get the io instance
+      const io: Server = app.get("io");
+      
+      // Emit generic deletion event (this works already in your code)
+      io.emit("tradeDeleted", { tradeId: t.id });
+      
+      // Also emit specific status change event (new)
+      if (assignedPayerId) {
+        // Use emitTradeStatusChange if available
+        if (typeof emitTradeStatusChange === 'function') {
+          emitTradeStatusChange(tradeId, TradeStatus.CANCELLED, assignedPayerId);
+        } else {
+          // Otherwise emit directly to the assigned payer's room
+          io.to(assignedPayerId).emit("tradeStatusChanged", {
+            tradeId,
+            status: TradeStatus.CANCELLED,
+          });
+        }
+      }
+      
+      console.log(`Auto-cancelled & notified deletion of ${t.tradeHash}`);
     }
   }
 };
 
-// In the safeAssignTrade function
 async function safeAssignTrade(tradeHash: string, processFn: () => Promise<void>) {
   if (processingLock.get(tradeHash)) {
     console.log(`Trade ${tradeHash} is already being processed`);
@@ -1281,7 +1567,6 @@ async function safeAssignTrade(tradeHash: string, processFn: () => Promise<void>
     processingLock.delete(tradeHash);
   }
 }
-
 
 export const assignLiveTradesInternal = async (): Promise<any[]> => {
   const queryRunner = dbConnect.createQueryRunner();
@@ -1319,6 +1604,7 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
             existing.status = TradeStatus.ESCALATED;
             await queryRunner.manager.save(existing);
             console.log(`Enforced ESCALATED for ${td.trade_hash}`);
+            
           }
           continue;
         }
@@ -1337,6 +1623,11 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
             existing.tradeStatus = td.trade_status;
             existing.assignedPayerId = undefined;
             await queryRunner.manager.save(existing);
+            const io: Server = app.get("io");
+    io.emit("tradeStatusChanged", {
+      tradeId: existing.id,
+      status: existing.status,
+    });
             // console.log(`Set ${td.trade_hash} → COMPLETED`);
           }
         } else if (lower === 'successful') {
@@ -1345,7 +1636,12 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
             existing.tradeStatus = td.trade_status;
             existing.assignedPayerId = undefined;
             await queryRunner.manager.save(existing);
-            console.log(`Set ${td.trade_hash} → SUCCESSFUL`);
+            const io: Server = app.get("io");
+            io.emit("tradeStatusChanged", {
+              tradeId: existing.id,
+              status: existing.status,
+            });
+            // console.log(`Set ${td.trade_hash} → SUCCESSFUL`);
           }
         } else if (['cancelled', 'expired', 'disputed'].includes(lower)) {
           if (existing.status !== TradeStatus.CANCELLED) {
@@ -1353,6 +1649,11 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
             existing.tradeStatus = td.trade_status;
             existing.assignedPayerId = undefined;
             await queryRunner.manager.save(existing);
+            const io: Server = app.get("io");
+    io.emit("tradeStatusChanged", {
+      tradeId: existing.id,
+      status: existing.status,
+    });
             // console.log(`Set ${td.trade_hash} → CANCELLED`);
           }
         }
@@ -1427,7 +1728,7 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
           t.assignedPayerId = payer.id;
           t.assignedAt = new Date();
           const saved = await queryRunner.manager.save(t);
-          console.log(`Assigned ${td.trade_hash} → payer ${payer.id}`);
+          console.log(`Assigned ${td.trade_hash} → payer ${payer.id} ${payer.fullName}`);
 
           // Optionally fetch details/chat here
           out.push(saved);
@@ -1447,7 +1748,6 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
     await queryRunner.release();
   }
 };
-
 
 export const getLiveTrades = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -1513,31 +1813,51 @@ const getAvailablePayers = async (): Promise<User[]> => {
   const userRepository = dbConnect.getRepository(User);
   const shiftRepository = dbConnect.getRepository(Shift);
 
-  // First, get all clocked-in payers
-  const payers = await userRepository.find({
-    where: { userType: UserType.PAYER, clockedIn: true },
-    order: { createdAt: "ASC" },
-  });
+  try {
+    // 1. Get all users with PAYER role who are marked as clocked in
+    const activePayerUsers = await userRepository.find({
+      where: {
+        userType: UserType.PAYER,
+        clockedIn: true,      // Must be marked as clocked in
+        status: "active"      // Must have an active account status
+      },
+      order: { createdAt: "ASC" }, // Maintain FIFO order
+    });
 
-  // Then, filter out those who are on break
-  const activePayerIds = new Set<string>();
+    if (activePayerUsers.length === 0) {
+      console.log("No clocked-in payers found.");
+      return [];
+    }
 
-  // Find all active shifts that are not on break
-  const activeShifts = await shiftRepository.find({
-    where: {
-      status: ShiftStatus.ACTIVE, // Only ACTIVE shifts, not ON_BREAK
-      user: { userType: UserType.PAYER }
-    },
-    relations: ["user"],
-  });
+    // 2. Get the active shifts for these payers (specifically not on break)
+    const activePayers = await shiftRepository.find({
+      where: {
+        status: ShiftStatus.ACTIVE, // Must be ACTIVE, not ON_BREAK
+        user: {
+          id: In(activePayerUsers.map(p => p.id)) // Only from our filtered payers
+        }
+      },
+      relations: ["user"], // Include user data
+    });
 
-  // Collect IDs of users with active shifts
-  activeShifts.forEach(shift => {
-    activePayerIds.add(shift.user.id);
-  });
+    // 3. Get the final list of eligible payers
+    const availablePayers = activePayers.map(shift => shift.user);
 
-  // Filter the payers to only include those with active shifts
-  return payers.filter(payer => activePayerIds.has(payer.id));
+    // 4. Double check the result by verifying each payer is actually clocked in
+    const verifiedAvailablePayers = availablePayers.filter(payer => {
+      const isEligible = payer && payer.clockedIn === true;
+      if (!isEligible) {
+        console.log(`Excluded payer ${payer.id}: not properly clocked in`);
+      }
+      return isEligible;
+    });
+
+    console.log(`Found ${verifiedAvailablePayers.length} ${verifiedAvailablePayers} truly available payers.`);
+    return verifiedAvailablePayers;
+  } catch (error) {
+    console.error("Error getting available payers:", error);
+    return []; // Return empty array on error
+  }
 };
 
 export const getTradeDetails = async (
@@ -1547,11 +1867,12 @@ export const getTradeDetails = async (
 ) => {
   try {
     const { platform, tradeHash, accountId } = req.params;
-    console.log("Received Params:", { platform, tradeHash, accountId });
-
     if (!platform || !tradeHash || !accountId) {
       return next(
-        new ErrorHandler("Platform, trade hash, and account ID are required", 400)
+        new ErrorHandler(
+          "Platform, trade hash, and account ID are required",
+          400
+        )
       );
     }
 
@@ -1561,24 +1882,27 @@ export const getTradeDetails = async (
 
     switch (platform) {
       case "noones": {
-        const service = services.noones.find((s) => s.accountId === accountId);
-        if (!service) {
+        const svc = services.noones.find((s) => s.accountId === accountId);
+        if (!svc) {
           return next(new ErrorHandler("Account not found", 404));
         }
-        externalTrade = await service.getTradeDetails(tradeHash);
-        tradeChat = await service.getTradeChat(tradeHash);
+        externalTrade = await svc.getTradeDetails(tradeHash);
+        tradeChat = await svc.getTradeChat(tradeHash);
         break;
       }
+
       case "paxful": {
-        const service = services.paxful.find((s) => s.accountId === accountId);
-        if (!service) {
+        const svc = services.paxful.find((s) => s.accountId === accountId);
+        if (!svc) {
           return next(new ErrorHandler("Account not found", 404));
         }
-        const response = await service.getTradeDetails(tradeHash);
-        externalTrade = response.data.trade;
-        tradeChat = await service.getTradeChat(tradeHash);
+        // fetch both trade details and chat
+        const resp = await svc.getTradeDetails(tradeHash);
+        externalTrade = resp.data.trade;
+        tradeChat = await svc.getTradeChat(tradeHash);
         break;
       }
+
       default:
         return next(new ErrorHandler("Unsupported platform", 400));
     }
@@ -1599,39 +1923,65 @@ export const getTradeDetails = async (
         (tradeRecord.completedAt.getTime() - tradeRecord.assignedAt.getTime()) / 1000;
     }
 
+    // 1) Pull raw messages & attachments
+    const messages = Array.isArray(tradeChat.messages) ? tradeChat.messages : [];
+    const attachments = tradeChat.attachments || [];
+
+    // 2) Find the first chat message carrying bank_account payload
+    const bankMsg = messages.find(
+      (m: any) => m.content && typeof m.content === 'object' && m.content.bank_account
+    );
+    const ba = bankMsg ? (bankMsg.content as any).bank_account : {};
+
+    // 3) Format externalTrade, overriding bank fields per-platform
     const formattedExternalTrade = {
-      btcRate: externalTrade?.fiat_price_per_btc || null,
-      dollarRate:( externalTrade?.fiat_price_per_btc) / (externalTrade?.crypto_current_rate_usd),
-      amount: externalTrade?.fiat_amount_requested || null,
-      bankName: externalTrade?.bank_accounts?.to?.bank_name || "N/A",
-      accountNumber: externalTrade?.bank_accounts?.to?.account_number || "N/A",
-      accountHolder: externalTrade?.bank_accounts?.to?.holder_name || "N/A",
-      buyer_name: externalTrade?.buyer_name || "Anonymous"
+      btcRate: externalTrade?.fiat_price_per_btc ?? null,
+      dollarRate:
+        externalTrade?.fiat_price_per_btc != null && externalTrade?.crypto_current_rate_usd
+          ? externalTrade.fiat_price_per_btc / externalTrade.crypto_current_rate_usd
+          : null,
+      amount: externalTrade?.fiat_amount_requested ?? null,
+      buyer_name: externalTrade?.buyer_name ?? "Anonymous",
+
+      // Bank fields: for paxful only from chat, default to "N/A" if missing
+      bankName: platform === "paxful"
+        ? (ba.bank_name || "N/A")
+        : (ba.bank_name || externalTrade?.bank_accounts?.to?.bank_name || "N/A"),
+
+      accountNumber: platform === "paxful"
+        ? (ba.account_number || "N/A")
+        : (ba.account_number || externalTrade?.bank_accounts?.to?.account_number || "N/A"),
+
+      accountHolder: platform === "paxful"
+        ? (ba.holder_name || "N/A")
+        : (ba.holder_name || externalTrade?.bank_accounts?.to?.holder_name || "N/A"),
     };
 
-    const formattedMessages = tradeChat?.messages?.map((msg: any) => ({
+    // 4) Format messages for front-end
+    const formattedMessages = messages.map((msg: any) => ({
       id: msg.id || Math.random().toString(36).substr(2, 9),
-      content: msg.text || "",
+      content: msg.text ?? msg.content ?? "",
       sender: {
         id: msg.author?.externalId || "system",
-        fullName: msg.author?.userName || "System"
+        fullName: msg.author?.userName || "System",
       },
       createdAt: msg.timestamp && !isNaN(msg.timestamp)
-        ? new Date(parseInt(msg.timestamp) * 1000).toISOString()
-        : new Date().toISOString()
-    })) || [];
+        ? new Date(Number(msg.timestamp) * 1000).toISOString()
+        : new Date().toISOString(),
+    }));
 
+    // 5) Respond with everything
     return res.status(200).json({
       success: true,
       data: {
         externalTrade: formattedExternalTrade,
         tradeChat: {
           messages: formattedMessages,
-          attachments: tradeChat?.attachments || []
+          attachments,
         },
-        tradeRecord: tradeRecord,
-        tradeDuration: tradeDuration
-      }
+        tradeRecord,
+        tradeDuration,
+      },
     });
   } catch (error) {
     return next(error);
@@ -1963,9 +2313,6 @@ export const markTradeAsPaid = async (
   }
 };
 
-/**
- * Get payer's assigned trade.
- */
 export const getPayerTrade = async (
   req: UserRequest,
   res: Response,
@@ -1974,10 +2321,12 @@ export const getPayerTrade = async (
   try {
     const { id } = req.params;
     const tradeRepository = dbConnect.getRepository(Trade);
+
+    // Get the most recently assigned trade for this payer regardless of current status
     const assignedTrade = await tradeRepository.findOne({
       where: {
         assignedPayerId: id,
-        status: TradeStatus.ASSIGNED,
+        isEscalated: false,
       },
       relations: {
         assignedPayer: true,
@@ -1990,6 +2339,14 @@ export const getPayerTrade = async (
     if (!assignedTrade) {
       return res.status(404).json({
         success: false
+      });
+    }
+
+    // If trade status is terminal, return 404 to indicate no active trade
+    if (["CANCELLED", "COMPLETED", "SUCCESSFUL", "PAID", "ESCALATED"].includes(assignedTrade.status)) {
+      return res.status(404).json({
+        success: false,
+        message: `Trade is in terminal state: ${assignedTrade.status}`
       });
     }
 
@@ -2063,7 +2420,6 @@ export const getPayerTrade = async (
     return next(new ErrorHandler("Error retrieving trade details", 500));
   }
 };
-
 
 export const getCompletedPaidTrades = async (
   req: UserRequest,
@@ -2306,7 +2662,7 @@ export const getCompletedPayerTrades = async (
             : null,
           ngnSellingPrice: trade.btcRate,
           ngnCostPrice: trade.btcNgnRate,
-          usdCost: trade.usdtNgnRate,
+          usdCost: trade.dollarRate,
           status: trade.status,
           tradeStatus: trade.tradeStatus,
           notes: trade.notes || null,
@@ -2437,7 +2793,6 @@ export const reassignTrade = async (req: Request, res: Response, next: NextFunct
   }
 };
 
-
 export const getAllTrades = async (
   req: Request,
   res: Response,
@@ -2447,156 +2802,153 @@ export const getAllTrades = async (
   await queryRunner.connect();
 
   try {
-    const page = parseInt((req.query.page as string) || "1", 10);
-    const limit = parseInt((req.query.limit as string) || "10", 10);
+    // Pagination
+    const page = parseInt((req.query.page as string) || '1', 10);
+    const limit = parseInt((req.query.limit as string) || '10', 10);
     const skip = (page - 1) * limit;
 
-    // 1) Fetch live "Active Funded" trades from platforms
+    // 1) Fetch live "Active Funded" trades
     const liveTrades = await aggregateLiveTrades();
     const liveHashes = liveTrades
       .filter(t => t.trade_status.toLowerCase() === 'active funded')
       .map(t => t.trade_hash);
 
-    // 2) Query DB for ACTIVE_FUNDED trades only
+    // 2) Query DB for ACTIVE_FUNDED trades
     const tradeRepo = queryRunner.manager.getRepository(Trade);
-    const qb = tradeRepo
-      .createQueryBuilder("trade")
-      .leftJoinAndSelect("trade.assignedPayer", "assignedPayer")
-      .where("trade.status = :active_funded", { active_funded: TradeStatus.ACTIVE_FUNDED })
-      .orderBy("trade.createdAt", "ASC")
+    const [dbTrades, total] = await tradeRepo
+      .createQueryBuilder('trade')
+      .leftJoinAndSelect('trade.assignedPayer', 'assignedPayer')
+      .where('trade.status = :status', { status: TradeStatus.ACTIVE_FUNDED })
+      .orderBy('trade.createdAt', 'ASC')
       .skip(skip)
-      .take(limit);
+      .take(limit)
+      .getManyAndCount();
 
-    const [dbTrades, total] = await qb.getManyAndCount();
     const totalPages = Math.ceil(total / limit);
 
-    // 3) Initialize platform services once
+    // 3) Initialize platform services
     const services = await initializePlatformServices();
 
-    // 4) Build a map of DB trades by hash for quick lookup
-    const dbMap = new Map(dbTrades.map((t) => [t.tradeHash, t]));
-
-    // 5) Enhance each DB trade with message count and live data if present
-    const enhanced: any[] = [];
-    for (const trade of dbTrades) {
-      let messageCount = 0;
-      let isLive = liveHashes.includes(trade.tradeHash);
-
-      // If it's live, pull in the platform's "live" fields
-      if (isLive) {
-        const live = liveTrades.find((l) => l.trade_hash === trade.tradeHash)!;
-        trade.tradeStatus = TradeStatus.ACTIVE_FUNDED;
-        trade.amount = live.fiat_amount_requested;
-        trade.cryptoCurrencyCode = live.crypto_currency_code;
-        trade.fiatCurrency = live.fiat_currency_code;
-      }
-
-      // Now fetch chat if the platform supports it
-      const svcList = services[trade.platform as keyof typeof services];
-      const svc = svcList?.find((s) => s.accountId === trade.accountId);
-      if (svc && typeof (svc as any).getTradeChat === "function") {
-        try {
-          const chat = await (svc as any).getTradeChat(trade.tradeHash);
-          console.log(`Chat data structure for ${trade.tradeHash}:`, JSON.stringify(chat));
-          
-          // Handle different possible message structures
-          if (Array.isArray(chat)) {
-            messageCount = chat.length;
-          } else if (chat.messages && Array.isArray(chat.messages)) {
-            messageCount = chat.messages.length;
-          } else if (chat.data && chat.data.messages && Array.isArray(chat.data.messages)) {
-            messageCount = chat.data.messages.length;
-          } else if (typeof chat === 'object' && chat !== null) {
-            // Try to find an array somewhere in the object
-            for (const key in chat) {
-              if (Array.isArray(chat[key])) {
-                console.log(`Found messages in key "${key}" for ${trade.tradeHash}`);
-                messageCount = chat[key].length;
-                break;
-              }
-            }
-          }
-          
-          console.log(`Final message count for ${trade.tradeHash}: ${messageCount}`);
-        } catch (err) {
-          console.error(`Chat error for ${trade.tradeHash}:`, err);
+    // Helper to fetch message count
+    async function fetchMessageCount(
+      svc: PaxfulService | NoonesService,
+      tradeHash: string
+    ): Promise<number> {
+      try {
+        const chat = await svc.getTradeChat(tradeHash);
+        // Paxful/Noones both return { messages: any[] } or array directly
+        if (Array.isArray(chat)) return chat.length;
+        if (Array.isArray(chat.messages)) return chat.messages.length;
+        if (chat.data && Array.isArray(chat.data.messages)) {
+          return chat.data.messages.length;
         }
+        // fallback to first array
+        for (const key of Object.keys(chat || {})) {
+          if (Array.isArray((chat as any)[key])) {
+            return (chat as any)[key].length;
+          }
+        }
+        return 0;
+      } catch {
+        return 0;
       }
-
-      enhanced.push({
-        ...trade,
-        messageCount,
-        isLive,
-        createdAt: trade.createdAt ? new Date(trade.createdAt).toISOString() : null,
-        updatedAt: trade.updatedAt ? new Date(trade.updatedAt).toISOString() : null,
-      });
     }
 
-    // 6) Add any *purely* live trades (not yet in DB) at the end
-    // But only include ACTIVE_FUNDED trades
-    for (const live of liveTrades) {
-      if (!dbMap.has(live.trade_hash) && 
-          live.trade_status.toLowerCase() === 'active funded') {
-        // find service
-        const svcList = services[live.platform as keyof typeof services];
-        const svc = svcList?.find((s) => s.accountId === live.account_id);
-        let messageCount = 0;
-
-        if (svc && typeof (svc as any).getTradeChat === "function") {
-          try {
-            const chat = await (svc as any).getTradeChat(live.trade_hash);
-            console.log(`Chat data for live ${live.trade_hash}:`, JSON.stringify(chat));
-            
-            // Handle different possible message structures
-            if (Array.isArray(chat)) {
-              messageCount = chat.length;
-            } else if (chat.messages && Array.isArray(chat.messages)) {
-              messageCount = chat.messages.length;
-            } else if (chat.data && chat.data.messages && Array.isArray(chat.data.messages)) {
-              messageCount = chat.data.messages.length;
-            } else if (typeof chat === 'object' && chat !== null) {
-              // Try to find an array somewhere in the object
-              for (const key in chat) {
-                if (Array.isArray(chat[key])) {
-                  console.log(`Found messages in key "${key}" for ${live.trade_hash}`);
-                  messageCount = chat[key].length;
-                  break;
-                }
-              }
-            }
-          } catch (err) {
-            console.error(`Chat error for live ${live.trade_hash}:`, err);
-          }
+    // 4) Enhance DB trades
+    const enhancedDbTrades = await Promise.all(
+      dbTrades.map(async trade => {
+        // Narrow service by platform
+        let svc: PaxfulService | NoonesService | undefined;
+        switch (trade.platform) {
+          case 'paxful':
+            svc = services.paxful.find(s => s.accountId === trade.accountId);
+            break;
+          case 'noones':
+            svc = services.noones.find(s => s.accountId === trade.accountId);
+            break;
         }
 
-        enhanced.push({
-          id: live.trade_hash,
-          tradeHash: live.trade_hash,
-          platform: live.platform,
-          accountId: live.accountId || live.account_id,
-          amount: live.fiat_amount_requested,
-          status: TradeStatus.ACTIVE_FUNDED,
-          createdAt: new Date().toISOString(),
-          cryptoCurrencyCode: live.crypto_currency_code,
-          fiatCurrency: live.fiat_currency_code,
-          ownerUsername: live.ownerUsername || live.owner_username,
-          responderUsername: live.responder_username,
-          paymentMethod: live.payment_method_name,
-          assignedPayer: null,
+        // Apply live values if applicable
+        if (liveHashes.includes(trade.tradeHash)) {
+          const live = liveTrades.find(l => l.trade_hash === trade.tradeHash)!;
+          trade.amount = live.fiat_amount_requested;
+          trade.cryptoCurrencyCode = live.crypto_currency_code;
+          trade.fiatCurrency = live.fiat_currency_code;
+        }
+
+        // Get message count only if svc supports chat
+        const messageCount = svc ? await fetchMessageCount(svc, trade.tradeHash) : 0;
+
+        return {
+          id: trade.id,
+          tradeHash: trade.tradeHash,
+          platform: trade.platform,
+          accountId: trade.accountId,
+          amount: trade.amount,
+          status: trade.status,
+          cryptoCurrencyCode: trade.cryptoCurrencyCode,
+          fiatCurrency: trade.fiatCurrency,
+          assignedPayer: trade.assignedPayer?.fullName,
+          createdAt: trade.createdAt,
+          updatedAt: trade.updatedAt,
+          ownerUsername: trade.ownerUsername,
+          responderUsername: trade.responderUsername,
           messageCount,
-          isLive: true,
-        });
-      }
-    }
+          isLive: liveHashes.includes(trade.tradeHash),
+        };
+      })
+    );
 
-    // 7) Sort by message count desc
-    enhanced.sort((a, b) => b.messageCount - a.messageCount);
+    // 5) Enhance purely live trades not in DB
+    const dbHashSet = new Set(dbTrades.map(t => t.tradeHash));
+    const enhancedLiveOnly = await Promise.all(
+      liveTrades
+        .filter(l =>
+          l.trade_status.toLowerCase() === 'active funded' &&
+          !dbHashSet.has(l.trade_hash)
+        )
+        .map(async live => {
+          let svc: PaxfulService | NoonesService | undefined;
+          switch (live.platform) {
+            case 'paxful':
+              svc = services.paxful.find(s => s.accountId === live.account_id);
+              break;
+            case 'noones':
+              svc = services.noones.find(s => s.accountId === live.account_id);
+              break;
+          }
 
-    // 8) Return
+          const messageCount = svc ? await fetchMessageCount(svc, live.trade_hash) : 0;
+
+          return {
+            id: live.trade_hash,
+            tradeHash: live.trade_hash,
+            platform: live.platform,
+            accountId: live.accountId || live.account_id,
+            amount: live.fiat_amount_requested,
+            status: TradeStatus.ACTIVE_FUNDED,
+            cryptoCurrencyCode: live.crypto_currency_code,
+            fiatCurrency: live.fiat_currency_code,
+            ownerUsername: live.ownerUsername || live.owner_username,
+            responderUsername: live.responderUsername || live.responder_username,
+            paymentMethod: live.payment_method_name,
+            assignedPayer: live.assignedPayer,
+            createdAt: live.createdAt,
+            messageCount,
+            isLive: true,
+          };
+        })
+    );
+
+    // 6) Combine & sort by messageCount desc
+    const allTrades = [...enhancedDbTrades, ...enhancedLiveOnly];
+    allTrades.sort((a, b) => b.messageCount - a.messageCount);
+
+    // 7) Respond
     return res.status(200).json({
       success: true,
       data: {
-        trades: enhanced,
+        trades: allTrades,
         pagination: {
           total,
           totalPages,
@@ -2606,13 +2958,12 @@ export const getAllTrades = async (
       },
     });
   } catch (err: any) {
-    console.error("Error in getAllTrades:", err);
+    console.error('Error in getAllTrades:', err);
     return next(new ErrorHandler(`Error retrieving trades: ${err.message}`, 500));
   } finally {
     await queryRunner.release();
   }
 };
-
 
 export const getUnfinishedTrades = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -2672,7 +3023,6 @@ export const updateCapRate = async (req: Request, res: Response, next: NextFunct
     return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
-
 
 export const getCapRate = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -2774,43 +3124,6 @@ export const getRates = async (
   }
 };
 
-
-// export const getActiveFundedTotal = async (
-//   req: Request,
-//   res: Response,
-//   next: NextFunction
-// ) => {
-//   try {
-//     const liveTrades = await aggregateLiveTrades();
-
-//     let totalActiveFundedBTC = 0;
-//     let totalActiveFundedUSDT = 0;
-
-//     for (const trade of liveTrades) {
-//       const code = (trade.crypto_currency_code || "").toUpperCase();
-//       const raw = parseFloat(trade.crypto_amount_total ?? "0");
-//       const decimals = DECIMALS[code] || 0;
-//       const amt = raw / 10 ** decimals;
-
-//       if (code === "BTC") {
-//         totalActiveFundedBTC += amt;
-//       } else if (code === "USDT") {
-//         totalActiveFundedUSDT += amt;
-//       }
-//     }
-
-//     return res.status(200).json({
-//       success: true,
-//       data: {
-//         btc: totalActiveFundedBTC,
-//         usdt: totalActiveFundedUSDT,
-//       },
-//     });
-//   } catch (error) {
-//     return next(error);
-//   }
-// };
-
 export const getActiveFundedTotal = async (
   req: Request,
   res: Response,
@@ -2855,10 +3168,6 @@ export const getActiveFundedTotal = async (
   }
 };
 
-/**
- * GET /trade/vendor-coin
- * Returns the total BTC and USDT from trades that the platform reports as "paid".
- */
 export const getVendorCoin = async (
   req: Request,
   res: Response,
@@ -2908,7 +3217,6 @@ export const getVendorCoin = async (
   }
 };
 
-
 export const escalateTrade = async (
   req: Request,
   res: Response,
@@ -2927,6 +3235,9 @@ export const escalateTrade = async (
     trade.escalatedById = escalatedById;
     trade.assignedPayerId = undefined;
     await tradeRepo.save(trade);
+
+    const io: Server = app.get("io");
+    io.emit("tradeEscalated", { tradeId: trade.id });
 
     // Mark this trade as recently modified to prevent reassignment
     markTradeAsModified(trade.tradeHash);
@@ -3166,11 +3477,16 @@ export const cancelTrade = async (req: Request, res: Response, next: NextFunctio
     }
 
     // Update trade status in our database
-    trade.status = TradeStatus.CANCELLED;
-    trade.isEscalated = false
-    await tradeRepo.save(trade);
+    // trade.status = TradeStatus.CANCELLED;
+    // trade.isEscalated = false
+    // await tradeRepo.save(trade);
+
+    await tradeRepo.delete(trade.id);
 
     await queryRunner.commitTransaction();
+    const io: Server = req.app.get("io");
+
+    io.emit("tradeDeleted", { tradeId: trade.id });
 
     return res.status(200).json({
       success: true,
@@ -3239,6 +3555,26 @@ export const getCCstats = async (_req: Request, res: Response) => {
     resolutionRatePercent,
     activeVendors,
   });
+};
+
+export const emitTradeStatusChange = (tradeId: string, status: string, assignedPayerId?: string) => {
+  const io: Server = app.get("io");
+  
+  // Emit to all clients watching this specific trade
+  io.to(`trade:${tradeId}`).emit("tradeStatusChanged", {
+    tradeId,
+    status,
+  });
+  
+  // Also emit to the assigned payer's room if available
+  if (assignedPayerId) {
+    io.to(assignedPayerId).emit("tradeStatusChanged", {
+      tradeId,
+      status,
+    });
+  }
+  
+  console.log(`Emitted tradeStatusChanged for ${tradeId}: ${status}`);
 };
 
 function next(arg0: string, error: unknown) {

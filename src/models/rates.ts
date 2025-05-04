@@ -33,9 +33,16 @@ export class Rates {
   })
   btcngnrate!: number;
 
-  // New dynamic column for platform-specific rate settings
   @Column({ type: "jsonb", nullable: true })
   platformRates?: Record<string, any>;
+
+  @Column({
+    type: "jsonb",
+    nullable: true,
+    default: {}
+  })
+  platformCostPrices?: Record<string, number>;
+  
 
   @Column({ type: "numeric", precision: 50, scale: 8, nullable: true })
   paxfulRate?: string;

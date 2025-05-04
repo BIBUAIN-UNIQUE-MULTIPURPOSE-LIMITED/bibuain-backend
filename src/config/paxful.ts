@@ -386,7 +386,7 @@ export class PaxfulService {
   }
   
  async getOfferDetails(offerHash: string): Promise<any> {
-      console.log(`[PaxfulService] → getOfferDetails(${offerHash}) called`);
+      // console.log(`[PaxfulService] → getOfferDetails(${offerHash}) called`);
       try {
         const params = { offer_hash: offerHash };
         const response = await this.paxfulApi.invoke(
@@ -445,12 +445,12 @@ export class PaxfulService {
   }
   async updateOffer(offerId: string, margin: number): Promise<any> {
     try {
-      console.log(`[${this.label}] Updating Paxful offer ${offerId} with margin ${margin}`);
+      // console.log(`[${this.label}] Updating Paxful offer ${offerId} with margin ${margin}`);
       const response = await this.makeRequest("/paxful/v1/offer/update", {
         offer_hash: offerId,
         margin: margin,
       });
-      console.log(`[${this.label}] Paxful update response:`, response);
+      // console.log(`[${this.label}] Paxful update response:`, response);
       return response;
     } catch (error: any) {
       console.error(`[${this.label}] Paxful offer update failed:`, error);
