@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "dist/server.js",
   "scripts": {
+    "prepare": "husky install",
     "lint": "eslint src --ext .ts",
     "type-check": "tsc --noEmit",
     "build": "tsc",
@@ -54,6 +55,8 @@
     "@typescript-eslint/eslint-plugin": "^8.31.0",
     "@typescript-eslint/parser": "^8.31.0",
     "eslint": "^9.25.1",
+    "husky": "^8.0.0",
+    "lint-staged": "^15.5.1",
     "ts-node": "^10.9.2",
     "typeorm": "^0.3.21",
     "typescript": "^5.7.2"
