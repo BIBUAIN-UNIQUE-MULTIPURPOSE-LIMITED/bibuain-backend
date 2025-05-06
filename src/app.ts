@@ -33,7 +33,7 @@ const app = express();
 
 // CORS Configuration
 const corsOptions = {
-  origin: ["https://app.bibuain.ng", "http://localhost:5173", "https://bibuain.onrender.com", "https://bibuain-backend-jhq3.onrender.com", 'https://bibuain-frontend.onrender.com', '*', 'https://main.d3k29622cc2yrv.amplifyapp.com'],
+  origin: ["https://app.bibuain.ng", "http://localhost:5173", "https://main.d251fvvwfaaim4.amplifyapp.com"],
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"],

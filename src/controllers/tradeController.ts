@@ -1263,65 +1263,6 @@ const checkDbConnection = async (): Promise<boolean> => {
 
 const processingLock = new Map<string, boolean>();
 
-// const upsertLiveTrades = async (liveTrades: any[]) => {
-//   const tradeRepo = dbConnect.getRepository(Trade);
-
-//   for (const t of liveTrades) {
-//     const lower = t.trade_status.toLowerCase();
-//     // map the platform‐string to your enum
-//     const statusMap: Record<string, TradeStatus> = {
-//       'active funded': TradeStatus.ACTIVE_FUNDED,
-//       'paid': TradeStatus.PAID,
-//       'completed': TradeStatus.COMPLETED,
-//       'successful': TradeStatus.SUCCESSFUL,
-//       'cancelled': TradeStatus.CANCELLED,
-//       'expired': TradeStatus.CANCELLED,
-//       'disputed': TradeStatus.DISPUTED,
-//     };
-//     const newStatus = statusMap[lower] ?? TradeStatus.ACTIVE_FUNDED;
-
-//     // build only the fields you need to upsert
-//     const mapped: Partial<Trade> = {
-//       tradeHash: t.trade_hash,
-//       accountId: t.accountId,
-//       platform: t.platform,
-//       tradeStatus: t.trade_status,
-//       status: newStatus,
-//       amount: t.fiat_amount_requested,
-//       cryptoAmountRequested: t.crypto_amount_requested,
-//       cryptoAmountTotal: t.crypto_amount_total,
-//       feeCryptoAmount: t.fee_crypto_amount,
-//       feePercentage: t.fee_percentage,
-//       sourceId: t.source_id,
-//       responderUsername: t.responder_username,
-//       ownerUsername: t.owner_username,
-//       paymentMethod: t.payment_method_name,
-//       locationIso: t.location_iso,
-//       fiatCurrency: t.fiat_currency_code,
-//       cryptoCurrencyCode: t.crypto_currency_code,
-//       isActiveOffer: t.is_active_offer,
-//       offerHash: t.offer_hash,
-//       margin: t.margin,
-//       btcRate: t.fiat_price_per_btc,
-//       btcNgnRate: t.fiat_price_per_crypto,
-//       usdtNgnRate: t.crypto_current_rate_usd,
-//       dollarRate: t.fiat_price_per_btc / t.crypto_current_rate_usd,
-//       ...(newStatus === TradeStatus.CANCELLED || newStatus === TradeStatus.COMPLETED || newStatus === TradeStatus.SUCCESSFUL || newStatus === TradeStatus.PAID
-//         ? { assignedPayerId: undefined }
-//         : {}
-//       ),
-//     };
-
-//     const existing = await tradeRepo.findOne({ where: { tradeHash: mapped.tradeHash } });
-//     if (existing) {
-//       // only overwrite the DB row once we know the new status
-//       await tradeRepo.update(existing.id, mapped);
-//     } else {
-//       await tradeRepo.save(mapped as Trade);
-//     }
-//   }
-// };
-
 const upsertLiveTrades = async (liveTrades: any[]) => {
   const tradeRepo = dbConnect.getRepository(Trade);
 
@@ -1437,51 +1378,6 @@ const aggregateLiveTrades = async (): Promise<any[]> => {
   await upsertLiveTrades(filtered);
   return filtered;
 };
-
-// const syncCancelledTrades = async (): Promise<void> => {
-//   const services = await initializePlatformServices();
-//   const liveHashes = new Set<string>();
-
-//   // gather all active‐funded hashes
-//   for (const list of [services.paxful, services.noones]) {
-//     for (const svc of list) {
-//       try {
-//         const trades = await svc.listActiveTrades();
-//         trades.forEach((t: any) => liveHashes.add(t.trade_hash));
-//       } catch (err) {
-//         console.error('syncCancelledTrades list error:', err);
-//       }
-//     }
-//   }
-
-//   const repo = dbConnect.getRepository(Trade);
-//   const stale = await repo.find({
-//     where: [
-//       { status: TradeStatus.ACTIVE_FUNDED },
-//       { status: TradeStatus.ASSIGNED },
-//       { status: TradeStatus.ESCALATED },
-//       {
-//         tradeStatus: Not(TradeStatus.CANCELLED),
-//         status: Not(In([TradeStatus.COMPLETED, TradeStatus.ESCALATED])),
-//         isEscalated: true
-//       }
-//     ],
-//   });
-
-//   for (const t of stale) {
-//     if (!liveHashes.has(t.tradeHash)) {
-//       // t.status = TradeStatus.CANCELLED;
-//       // // t.notes = 'Auto‐cancelled: no longer active on platform';
-//       // t.assignedPayerId = undefined;
-//       // await repo.save(t);
-//       // console.log(`Auto‐cancelled trade ${t.tradeHash}`);
-//       await repo.delete(t.id);
-//       const io: Server = app.get("io");
-//       io.emit("tradeDeleted", { tradeId: t.id });
-//       console.log(`Auto-cancelled & notified deletion of ${t.tradeHash}`); 
-//     }
-//   }
-// };
 
 const syncCancelledTrades = async (): Promise<void> => {
   const services = await initializePlatformServices();

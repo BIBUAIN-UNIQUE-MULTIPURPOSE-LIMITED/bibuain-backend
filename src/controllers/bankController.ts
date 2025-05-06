@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import dbConnect from "../config/database";
-import { Bank } from "../models/bank";
+import { Bank, BankTag } from "../models/bank";
+import { Shift } from "../models/shift";
 import ErrorHandler from "../utils/errorHandler";
 
 // Add a new bank (Raters only)
@@ -10,13 +11,12 @@ export const addBank = async (
   next: NextFunction
 ) => {
   try {
-    const { bankName, accountName, accountNumber, funds, additionalNotes } =
-      req.body;
+    const { bankName, accountName, accountNumber, additionalNotes, funds, tag } = req.body;
 
     // Validation
     if (!bankName || !accountName || !accountNumber) {
       throw new ErrorHandler(
-        "All fields (Bank Name, Account Name, Account Number, Serial Number) are required.",
+        "All fields (Bank Name, Account Name, Account Number) are required.",
         400
       );
     }
@@ -34,6 +34,7 @@ export const addBank = async (
       accountNumber,
       additionalNotes,
       funds: funds || 0,
+      tag: tag || BankTag.UNFUNDED,
     });
     await bankRepo.save(newBank);
 
@@ -66,7 +67,7 @@ export const getAllBanks = async (
   }
 };
 
-// Fetch free banks (Banks with 0 balance)
+// Fetch free banks (Banks tagged UNFUNDED)
 export const getFreeBanks = async (
   req: Request,
   res: Response,
@@ -74,7 +75,7 @@ export const getFreeBanks = async (
 ) => {
   try {
     const bankRepo = dbConnect.getRepository(Bank);
-    const freeBanks = await bankRepo.find({ where: { funds: 0 } });
+    const freeBanks = await bankRepo.find({ where: { tag: BankTag.UNFUNDED } });
 
     res.status(200).json({
       success: true,
@@ -85,7 +86,7 @@ export const getFreeBanks = async (
   }
 };
 
-// Fetch funded banks (Banks with funds > 0)
+// Fetch funded banks (Banks tagged FUNDED)
 export const getFundedBanks = async (
   req: Request,
   res: Response,
@@ -93,10 +94,7 @@ export const getFundedBanks = async (
 ) => {
   try {
     const bankRepo = dbConnect.getRepository(Bank);
-    const fundedBanks = await bankRepo
-      .createQueryBuilder("bank")
-      .where("bank.funds > :funds", { funds: 0 })
-      .getMany();
+    const fundedBanks = await bankRepo.find({ where: { tag: BankTag.FUNDED } });
 
     res.status(200).json({
       success: true,
@@ -107,29 +105,31 @@ export const getFundedBanks = async (
   }
 };
 
-// Fetch banks in use (Payers View - Only funded banks available for transactions)
-export const getBanksInUse = async (
+// Get single bank by ID
+export const getBankById = async (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
   try {
+    const { id } = req.params;
     const bankRepo = dbConnect.getRepository(Bank);
-    const banksInUse = await bankRepo
-      .createQueryBuilder("bank")
-      .where("bank.funds > :funds", { funds: 0 })
-      .getMany();
+    const bank = await bankRepo.findOne({ where: { id } });
+
+    if (!bank) {
+      throw new ErrorHandler("Bank not found.", 404);
+    }
 
     res.status(200).json({
       success: true,
-      data: banksInUse,
+      data: bank,
     });
   } catch (error) {
     next(error);
   }
 };
 
-// Update bank details (Raters only)
+// Update bank details (Raters: fund or modify)
 export const updateBank = async (
   req: Request,
   res: Response,
@@ -137,8 +137,7 @@ export const updateBank = async (
 ) => {
   try {
     const { id } = req.params;
-    const { bankName, accountName, accountNumber, additionalNotes, funds } =
-      req.body;
+    const { bankName, accountName, accountNumber, additionalNotes, funds, tag } = req.body;
 
     const bankRepo = dbConnect.getRepository(Bank);
     const bank = await bankRepo.findOne({ where: { id } });
@@ -147,14 +146,27 @@ export const updateBank = async (
       throw new ErrorHandler("Bank not found.", 404);
     }
 
-    // Update fields
+    // Update basic fields
     bank.bankName = bankName || bank.bankName;
     bank.accountName = accountName || bank.accountName;
     bank.accountNumber = accountNumber || bank.accountNumber;
-    bank.additionalNotes = additionalNotes || bank.additionalNotes;
-    bank.funds = funds !== undefined ? funds : bank.funds;
+    bank.additionalNotes = additionalNotes ?? bank.additionalNotes;
 
-    // Save updates
+    // Tag transition: UNFUNDED -> FUNDED, or back to UNFUNDED
+    if (funds !== undefined) {
+      const prevFunds = bank.funds;
+      bank.funds = funds;
+      if (prevFunds === 0 && funds > 0) {
+        bank.tag = BankTag.FUNDED;
+      } else if (funds === 0) {
+        bank.tag = BankTag.UNFUNDED;
+      }
+    }
+
+    if (tag) {
+      bank.tag = tag;
+    }
+
     await bankRepo.save(bank);
 
     res.status(200).json({
@@ -162,6 +174,44 @@ export const updateBank = async (
       message: "Bank updated successfully.",
       data: bank,
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Use a bank during a shift (Payers only)
+export const useBank = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const { amountUsed, shiftId } = req.body;
+
+    const bankRepo = dbConnect.getRepository(Bank);
+    const shiftRepo = dbConnect.getRepository(Shift);
+
+    const bank = await bankRepo.findOne({ where: { id } });
+    if (!bank) throw new ErrorHandler("Bank not found.", 404);
+
+    const shift = await shiftRepo.findOne({ where: { id: shiftId } });
+    if (!shift) throw new ErrorHandler("Shift not found.", 404);
+
+    // Deduct funds and tag
+    const remaining = bank.funds - amountUsed;
+    bank.funds = remaining >= 0 ? remaining : 0;
+    bank.shift = shift;
+    bank.tag = bank.funds === 0 ? BankTag.ROLLOVER : BankTag.USED;
+    
+
+    // Log usage
+    const logEntry = { description: `Used ${amountUsed}`, createdAt: new Date() };
+    bank.logs = bank.logs ? [...bank.logs, logEntry] : [logEntry];
+
+    await bankRepo.save(bank);
+
+    res.status(200).json({ success: true, data: bank });
   } catch (error) {
     next(error);
   }
@@ -175,64 +225,83 @@ export const deleteBank = async (
 ) => {
   try {
     const { id } = req.params;
-
     const bankRepo = dbConnect.getRepository(Bank);
     const bank = await bankRepo.findOne({ where: { id } });
+    if (!bank) throw new ErrorHandler("Bank not found.", 404);
 
-    if (!bank) {
-      throw new ErrorHandler("Bank not found.", 404);
-    }
-
-    // Delete bank
     await bankRepo.remove(bank);
+    res.status(200).json({ success: true, message: "Bank deleted successfully." });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Daily refresh: mark UNFUNDED & ROLLOVER as FRESH
+export const reloadFreshBanks = async () => {
+  const bankRepo = dbConnect.getRepository(Bank);
+  try {
+    await bankRepo
+      .createQueryBuilder()
+      .update(Bank)
+      .set({ tag: BankTag.FRESH })
+      .where("tag IN (:...tags)", { tags: [BankTag.UNFUNDED, BankTag.ROLLOVER] })
+      .execute();
+  } catch (error) {
+    console.error("Error in reloadFreshBanks:", error);
+  }
+};
+
+// Fetch used banks (Banks tagged USED)
+export const getUsedBanks = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const bankRepo = dbConnect.getRepository(Bank);
+    const usedBanks = await bankRepo.find({ where: { tag: BankTag.USED } });
 
     res.status(200).json({
       success: true,
-      message: "Bank deleted successfully.",
+      data: usedBanks,
     });
   } catch (error) {
     next(error);
   }
 };
 
-// Automatically reload free banks at 1 AM daily (Scheduler logic)
-export const reloadFreeBanks = async () => {
-  const bankRepo = dbConnect.getRepository(Bank);
-
-  try {
-    // Update all banks with 0 funds to the default reload limit
-    const reloadLimit = 1000; // Example limit for reloading
-    await bankRepo
-      .createQueryBuilder()
-      .update(Bank)
-      .set({ funds: reloadLimit })
-      .where("funds = :funds", { funds: 0 })
-      .execute();
-
-    // console.log("Free banks reloaded successfully.");
-  } catch (error) {
-    console.error("Error reloading free banks:", error);
-  }
-};
-
-export const getBankById = async (
+// Fetch rollover banks (Banks tagged ROLLOVER)
+export const getRolloverBanks = async (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
   try {
-    const { id } = req.params;
-
     const bankRepo = dbConnect.getRepository(Bank);
-    const bank = await bankRepo.findOne({ where: { id } });
-
-    if (!bank) {
-      throw new ErrorHandler("Bank not found.", 404);
-    }
+    const rolloverBanks = await bankRepo.find({ where: { tag: BankTag.ROLLOVER } });
 
     res.status(200).json({
       success: true,
-      data: bank,
+      data: rolloverBanks,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Fetch fresh banks (Banks tagged FRESH)
+export const getFreshBanks = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const bankRepo = dbConnect.getRepository(Bank);
+    const freshBanks = await bankRepo.find({ where: { tag: BankTag.FRESH } });
+
+    res.status(200).json({
+      success: true,
+      data: freshBanks,
     });
   } catch (error) {
     next(error);
