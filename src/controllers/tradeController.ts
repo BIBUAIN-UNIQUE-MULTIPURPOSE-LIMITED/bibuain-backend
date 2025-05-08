@@ -43,6 +43,9 @@ const DECIMALS: Record<string, number> = {
   FDUSD: 8,
 };
 
+// In-memory storage for reset timers (in a production app, use Redis or a database)
+const resetTimers: Record<string, { expiresAt: Date }> = {};
+
 // This map tracks recently modified trades to prevent immediate reassignment
 const recentlyModifiedTrades = new Map<string, number>();
 
@@ -2322,111 +2325,124 @@ export const getCompletedPaidTrades = async (
   res: Response,
   next: NextFunction
 ) => {
-  const queryRunner = dbConnect.createQueryRunner();
-  await queryRunner.connect();
-
   try {
-    const userId = req?.user?.id;
-    const userType = req?.user?.userType ?? "";
+    const userId = req.user?.id;
+    const userType = req.user?.userType ?? "";
     const isPrivileged = ["admin", "customer-support"].includes(userType);
 
     const page = parseInt((req.query.page as string) || "1", 10);
     const limit = parseInt((req.query.limit as string) || "10", 10);
     const skip = (page - 1) * limit;
 
-    const tradeRepo = queryRunner.manager.getRepository(Trade);
-    let qb = tradeRepo
-      .createQueryBuilder("trade")
-      .leftJoinAndSelect("trade.assignedPayer", "assignedPayer")
-      .where("trade.status != :completedStatus", {
-        completedStatus: TradeStatus.COMPLETED
-      });
-
-    if (!isPrivileged) {
-      qb = qb.andWhere("assignedPayer.id = :userId", { userId });
-    } else if (typeof req.query.payerId === "string" && req.query.payerId.trim()) {
-      qb = qb.andWhere("assignedPayer.id = :payerId", { payerId: req.query.payerId });
-    }
-
-    const totalCount = await qb.getCount();
-    const totalPages = Math.ceil(totalCount / limit);
-
-    const dbTrades = await qb
-      .orderBy("trade.updatedAt", "DESC")
-      .skip(skip)
-      .take(limit)
-      .getMany();
-
+    // Initialize platform services
     const services = await initializePlatformServices();
-    const paidOrDisputedTrades: Trade[] = [];
+    let allTrades: any[] = [];
 
-    for (const trade of dbTrades) {
-      try {
-        const svcList = services[trade.platform as "noones" | "paxful"];
-        if (!svcList?.length) {
-          continue;
-        }
-
-        const svc = svcList.find((s) => s.accountId === trade.accountId);
-        if (!svc) {
-          continue;
-        }
-
-        const platformTrade = await svc.getTradeDetails(trade.tradeHash);
-        if (!platformTrade) {
-          continue;
-        }
-
-        const platformStatus = platformTrade.trade_status?.toLowerCase() || "";
-        const isPaid = platformStatus === "paid";
-        const isDisputed = platformStatus === "disputed" || !!platformTrade.dispute;
-
-        if (isPaid || isDisputed) {
-          const updatedStatus = isPaid ? TradeStatus.PAID : TradeStatus.DISPUTED;
-          const updateData: any = {
-            status: updatedStatus,
-            tradeStatus: platformStatus,
-            updatedAt: new Date(),
-          };
-
-          if (isPaid && platformTrade.paid_at) {
-            updateData.paidAt = new Date(platformTrade.paid_at);
+    // Collect trades from all platforms and accounts
+    for (const platform of Object.keys(services) as Array<"noones" | "paxful">) {
+      for (const service of services[platform]) {
+        try {
+          // Skip if user isn't privileged and doesn't match the payer ID filter
+          if (!isPrivileged && service.accountId !== userId) {
+            continue;
           }
 
-          if (isDisputed) {
-            if (platformTrade.dispute_started_at) {
-              updateData.disputeStartedAt = new Date(platformTrade.dispute_started_at);
-            }
-            if (platformTrade.dispute?.reason) {
-              updateData.disputeReason = platformTrade.dispute.reason;
-            }
-            if (platformTrade.dispute?.reason_type) {
-              updateData.disputeReasonType = platformTrade.dispute.reason_type;
-            }
+          // Skip if a specific payerId is requested but doesn't match this service
+          if (isPrivileged && 
+              typeof req.query.payerId === "string" && 
+              req.query.payerId.trim() && 
+              service.accountId !== req.query.payerId) {
+            continue;
           }
 
-          await tradeRepo.update(trade.id, updateData);
+          // Fetch trades directly from the platform
+          const platformTrades = await service.listActiveTrades();
+          
+          if (!platformTrades || !Array.isArray(platformTrades)) {
+            continue;
+          }
 
-          paidOrDisputedTrades.push({
-            ...trade,
-            ...updateData,
-          });
+          // Process each trade from the platform
+          for (const platformTrade of platformTrades) {
+            const platformStatus = (platformTrade.trade_status || "").toLowerCase();
+            const isPaid = platformStatus === "paid";
+            const isDisputed = platformStatus === "disputed" || !!platformTrade.dispute;
+
+            // Only include paid or disputed trades
+            if (isPaid || isDisputed) {
+              // Extract common fields (with platform-specific handling)
+              const owner = platformTrade.owner_username 
+                          
+              const username = platformTrade.responder_username
+                             
+              const amount = platformTrade.fiat_amount_requested || 
+                           platformTrade.amount_fiat || 
+                           platformTrade.amount || 
+                           "N/A";
+                           
+              const currency = platformTrade.fiat_currency_code || 
+                             platformTrade.fiat_code || 
+                             platformTrade.currency_code || 
+                             "USD";
+                             
+              const createdAt = platformTrade.created_at || 
+                              platformTrade.started_at || 
+                              platformTrade.timestamp 
+
+              const tradeDetails = {
+                id: platformTrade.id || platformTrade.trade_id,
+                tradeHash: platformTrade.trade_hash,
+                platform,
+                accountId: service.accountId,
+                status: isPaid ? "PAID" : "DISPUTED",
+                tradeStatus: platformStatus,
+                updatedAt: new Date(),
+                // Include essential trade information
+                owner,
+                username,
+                amount,
+                currency,
+                createdAt: new Date(createdAt),
+                assignedPayer: {
+                  id: service.accountId,
+                  username: service.label || "N/A",
+                },
+                // Include platform-specific data
+                platformData: platformTrade,
+                // Add status-specific timestamps
+                ...(isPaid && platformTrade.paid_at ? { paidAt: new Date(platformTrade.paid_at) } : {}),
+                ...(isDisputed ? {
+                  disputeStartedAt: platformTrade.dispute_started_at ? new Date(platformTrade.dispute_started_at) : new Date(),
+                  disputeReason: platformTrade.dispute?.reason || null,
+                  disputeReasonType: platformTrade.dispute?.reason_type || null,
+                } : {})
+              };
+
+              allTrades.push(tradeDetails);
+            }
+          }
+        } catch (error) {
+          console.error(`Error fetching trades from ${platform} (${service.accountId}):`, error);
+          // Continue with other services on error
         }
-      } catch (err) {
-        console.error(`Error checking platform status for trade ${trade.id}:`, err);
       }
     }
 
-    const filteredTotal = paidOrDisputedTrades.length;
-    const filteredTotalPages = Math.ceil(filteredTotal / limit);
+    // Sort trades by updatedAt date (newest first)
+    allTrades.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+
+    // Calculate pagination
+    const totalCount = allTrades.length;
+    const totalPages = Math.ceil(totalCount / limit);
+    const paginatedTrades = allTrades.slice(skip, skip + limit);
 
     return res.status(200).json({
       success: true,
       data: {
-        trades: paidOrDisputedTrades,
+        trades: paginatedTrades,
         pagination: {
-          total: filteredTotal,
-          totalPages: filteredTotalPages,
+          total: totalCount,
+          totalPages,
           currentPage: page,
           itemsPerPage: limit,
         },
@@ -2440,8 +2456,6 @@ export const getCompletedPaidTrades = async (
         500
       )
     );
-  } finally {
-    await queryRunner.release();
   }
 };
 
@@ -3074,9 +3088,6 @@ export const getVendorCoin = async (
     let totalVendorCoinBTC = 0;
     let totalVendorCoinUSDT = 0;
 
-    const tradeRepository = dbConnect.getRepository(Trade);
-    const processedTradeHashes = new Set<string>();
-
     // Flatten Paxful + Noones
     const allServices = [...services.paxful, ...services.noones];
 
@@ -3085,8 +3096,7 @@ export const getVendorCoin = async (
       const completedTrades = await svc.listCompletedTrades();
 
       for (const trade of completedTrades) {
-        // Platform payload uses `trade.trade_status`, not `trade.status`
-        const status = (trade.trade_status || "").toLowerCase();
+        const status = (trade.trade_status).toLowerCase();
         if (status !== "paid") continue;
 
         const code = (trade.crypto_currency_code || "").toUpperCase();
@@ -3471,6 +3481,103 @@ export const emitTradeStatusChange = (tradeId: string, status: string, assignedP
   }
   
   console.log(`Emitted tradeStatusChanged for ${tradeId}: ${status}`);
+};
+
+/**
+ * Get the reset timer status for a payer
+ */
+export const getResetStatus = async (
+  req: UserRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const userId = req?.user?.id;
+    
+    if (!userId) {
+      return next(new ErrorHandler("User not authenticated", 401));
+    }
+
+    // Get the current reset timer for this user
+    const resetTimer = resetTimers[userId];
+    const isActive = resetTimer && new Date() < resetTimer.expiresAt;
+    
+    return res.status(200).json({
+      success: true,
+      data: {
+        isActive: isActive || false,
+        expiresAt: isActive ? resetTimer.expiresAt : null,
+      },
+    });
+  } catch (error: any) {
+    console.error("Error in getResetStatus:", error);
+    return next(new ErrorHandler(`Error getting reset status: ${error.message}`, 500));
+  }
+};
+
+/**
+ * Set a reset timer for a payer when they clock out
+ */
+export const setResetTimer = async (
+  req: UserRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const userId = req?.user?.id;
+    
+    if (!userId) {
+      return next(new ErrorHandler("User not authenticated", 401));
+    }
+
+    // Set expiration time to 2 hours from now
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 2);
+    
+    resetTimers[userId] = { expiresAt };
+    
+    return res.status(200).json({
+      success: true,
+      data: {
+        isActive: true,
+        expiresAt,
+      },
+    });
+  } catch (error: any) {
+    console.error("Error in setResetTimer:", error);
+    return next(new ErrorHandler(`Error setting reset timer: ${error.message}`, 500));
+  }
+};
+
+/**
+ * Manually trigger a reset for a payer
+ */
+export const triggerManualReset = async (
+  req: UserRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const userId = req?.user?.id;
+    
+    if (!userId) {
+      return next(new ErrorHandler("User not authenticated", 401));
+    }
+
+    // Clear the reset timer for this user
+    delete resetTimers[userId];
+    
+    return res.status(200).json({
+      success: true,
+      data: {
+        isActive: false,
+        expiresAt: null,
+      },
+    });
+  } catch (error: any) {
+    console.error("Error in triggerManualReset:", error);
+    return next(new ErrorHandler(`Error triggering manual reset: ${error.message}`, 500));
+  }
 };
 
 function next(arg0: string, error: unknown) {
