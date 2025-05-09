@@ -1383,66 +1383,106 @@ const aggregateLiveTrades = async (): Promise<any[]> => {
 };
 
 const syncCancelledTrades = async (): Promise<void> => {
-  const services = await initializePlatformServices();
-  const liveHashes = new Set<string>();
+  try {
+    const services = await initializePlatformServices();
+    const liveHashes = new Set<string>();
+    let fetchSuccess = false;
 
-  // gather all active‐funded hashes
-  for (const list of [services.paxful, services.noones]) {
-    for (const svc of list) {
-      try {
-        const trades = await svc.listActiveTrades();
-        trades.forEach((t: any) => liveHashes.add(t.trade_hash));
-      } catch (err) {
-        console.error('syncCancelledTrades list error:', err);
-      }
-    }
-  }
-
-  const repo = dbConnect.getRepository(Trade);
-  const stale = await repo.find({
-    where: [
-      { status: TradeStatus.ACTIVE_FUNDED },
-      { status: TradeStatus.ASSIGNED },
-      { status: TradeStatus.ESCALATED },
-      {
-        tradeStatus: Not(TradeStatus.CANCELLED),
-        status: Not(In([TradeStatus.COMPLETED, TradeStatus.ESCALATED])),
-        isEscalated: true
-      }
-    ],
-  });
-
-  for (const t of stale) {
-    if (!liveHashes.has(t.tradeHash)) {
-      // Store the assignedPayerId before deletion for notifications
-      const assignedPayerId = t.assignedPayerId;
-      const tradeId = t.id;
-
-      // Delete the trade
-      await repo.delete(t.id);
-      
-      // Get the io instance
-      const io: Server = app.get("io");
-      
-      // Emit generic deletion event (this works already in your code)
-      io.emit("tradeDeleted", { tradeId: t.id });
-      
-      // Also emit specific status change event (new)
-      if (assignedPayerId) {
-        // Use emitTradeStatusChange if available
-        if (typeof emitTradeStatusChange === 'function') {
-          emitTradeStatusChange(tradeId, TradeStatus.CANCELLED, assignedPayerId);
-        } else {
-          // Otherwise emit directly to the assigned payer's room
-          io.to(assignedPayerId).emit("tradeStatusChanged", {
-            tradeId,
-            status: TradeStatus.CANCELLED,
-          });
+    // gather all active trade hashes from external services
+    for (const list of [services.paxful, services.noones]) {
+      for (const svc of list) {
+        try {
+          const trades = await svc.listActiveTrades();
+          if (trades && Array.isArray(trades)) {
+            trades.forEach((t: any) => liveHashes.add(t.trade_hash));
+            fetchSuccess = true; // Mark that we successfully fetched from at least one service
+          }
+        } catch (err) {
+          console.error(`syncCancelledTrades list error for ${svc.accountId}:`, err);
         }
       }
-      
-      console.log(`Auto-cancelled & notified deletion of ${t.tradeHash}`);
     }
+
+    // Skip synchronization if we couldn't fetch from any services - prevents mass deletion on network failures
+    if (!fetchSuccess) {
+      console.error('syncCancelledTrades: Failed to fetch active trades from any service, skipping sync');
+      return;
+    }
+
+    const repo = dbConnect.getRepository(Trade);
+    const stale = await repo.find({
+      where: [
+        { status: TradeStatus.ACTIVE_FUNDED },
+        { status: TradeStatus.ASSIGNED },
+        { status: TradeStatus.ESCALATED },
+        {
+          tradeStatus: Not(TradeStatus.CANCELLED),
+          status: Not(In([TradeStatus.COMPLETED, TradeStatus.ESCALATED])),
+          isEscalated: true
+        }
+      ],
+    });
+
+    for (const t of stale) {
+      if (!liveHashes.has(t.tradeHash)) {
+        // Store the IDs before any operations for notifications
+        const assignedPayerId = t.assignedPayerId;
+        const tradeId = t.id;
+
+        // Get the io instance
+        const io: Server = app.get("io");
+
+        // Handle differently based on whether the trade is escalated
+        if (t.isEscalated || t.status === TradeStatus.ESCALATED) {
+          // Update escalated trades instead of deleting them
+          await repo.update(t.id, {
+            status: TradeStatus.CANCELLED,
+            tradeStatus: 'cancelled',
+            isEscalated: false,
+            assignedPayerId: undefined, // Clear assignment
+            completedAt: new Date() // Mark as completed now
+          });
+          
+          // Emit status change event
+          io.emit("tradeStatusChanged", {
+            tradeId: t.id,
+            status: TradeStatus.CANCELLED,
+          });
+          
+          console.log(`Updated escalated trade ${t.tradeHash} to CANCELLED`);
+        } else {
+          // Delete non-escalated trades as before
+          await repo.delete(t.id);
+          
+          // Emit generic deletion event
+          io.emit("tradeDeleted", { tradeId: t.id });
+          
+          console.log(`Auto-cancelled & deleted trade ${t.tradeHash}`);
+        }
+        
+        // Also emit specific status change event for assigned trades
+        if (assignedPayerId) {
+          // Use emitTradeStatusChange if available
+          if (typeof emitTradeStatusChange === 'function') {
+            emitTradeStatusChange(tradeId, TradeStatus.CANCELLED, assignedPayerId);
+          } else {
+            // Otherwise emit directly to the assigned payer's room
+            io.to(assignedPayerId).emit("tradeStatusChanged", {
+              tradeId,
+              status: TradeStatus.CANCELLED,
+            });
+          }
+        }
+        
+        // Mark this trade as recently modified to prevent reassignment
+        if (typeof markTradeAsModified === 'function') {
+          markTradeAsModified(t.tradeHash);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error in syncCancelledTrades:', error);
+    // Don't rethrow to prevent disrupting other operations
   }
 };
 
@@ -3483,102 +3523,6 @@ export const emitTradeStatusChange = (tradeId: string, status: string, assignedP
   console.log(`Emitted tradeStatusChanged for ${tradeId}: ${status}`);
 };
 
-/**
- * Get the reset timer status for a payer
- */
-export const getResetStatus = async (
-  req: UserRequest,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const userId = req?.user?.id;
-    
-    if (!userId) {
-      return next(new ErrorHandler("User not authenticated", 401));
-    }
-
-    // Get the current reset timer for this user
-    const resetTimer = resetTimers[userId];
-    const isActive = resetTimer && new Date() < resetTimer.expiresAt;
-    
-    return res.status(200).json({
-      success: true,
-      data: {
-        isActive: isActive || false,
-        expiresAt: isActive ? resetTimer.expiresAt : null,
-      },
-    });
-  } catch (error: any) {
-    console.error("Error in getResetStatus:", error);
-    return next(new ErrorHandler(`Error getting reset status: ${error.message}`, 500));
-  }
-};
-
-/**
- * Set a reset timer for a payer when they clock out
- */
-export const setResetTimer = async (
-  req: UserRequest,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const userId = req?.user?.id;
-    
-    if (!userId) {
-      return next(new ErrorHandler("User not authenticated", 401));
-    }
-
-    // Set expiration time to 2 hours from now
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 2);
-    
-    resetTimers[userId] = { expiresAt };
-    
-    return res.status(200).json({
-      success: true,
-      data: {
-        isActive: true,
-        expiresAt,
-      },
-    });
-  } catch (error: any) {
-    console.error("Error in setResetTimer:", error);
-    return next(new ErrorHandler(`Error setting reset timer: ${error.message}`, 500));
-  }
-};
-
-/**
- * Manually trigger a reset for a payer
- */
-export const triggerManualReset = async (
-  req: UserRequest,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const userId = req?.user?.id;
-    
-    if (!userId) {
-      return next(new ErrorHandler("User not authenticated", 401));
-    }
-
-    // Clear the reset timer for this user
-    delete resetTimers[userId];
-    
-    return res.status(200).json({
-      success: true,
-      data: {
-        isActive: false,
-        expiresAt: null,
-      },
-    });
-  } catch (error: any) {
-    console.error("Error in triggerManualReset:", error);
-    return next(new ErrorHandler(`Error triggering manual reset: ${error.message}`, 500));
-  }
-};
 
 function next(arg0: string, error: unknown) {
   throw new Error("Function not implemented.");
