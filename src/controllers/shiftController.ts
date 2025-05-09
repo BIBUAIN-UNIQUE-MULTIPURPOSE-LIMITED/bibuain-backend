@@ -509,58 +509,6 @@ export const getCurrentShift: RequestHandler = async (
   }
 };
 
-// export const getCurrentShift: RequestHandler = async (
-//   req: UserRequest,
-//   res: Response,
-//   next: NextFunction
-// ) => {
-//   try {
-//     const userId = req.user?.id;
-//     if (!userId) throw new ErrorHandler("Unauthorized", 401);
-
-//     const userRepo = dbConnect.getRepository(User);
-//     const shiftRepo = dbConnect.getRepository(Shift);
-
-//     const user = await userRepo.findOne({ where: { id: userId } });
-//     if (!user) throw new ErrorHandler("User not found", 404);
-
-//     // Determine the current shift type dynamically
-//     const now = new Date();
-//     const shiftType = getShiftTypeFromTime(now);
-
-//     // Find the active shift for the user matching the calculated shift type
-//     const currentShift = await shiftRepo.findOne({
-//       where: {
-//         user: { id: userId },
-//         shiftType,
-//         status: ShiftStatus.ACTIVE,
-//       },
-//       relations: ["user"],
-//     });
-
-//     if (!currentShift) {
-//       throw new ErrorHandler("No active shift found for current session", 404);
-//     }
-
-//     res.json({
-//       success: true,
-//       message: "Current shift retrieved successfully",
-//       data: {
-//         shift: currentShift,
-//         currentSession: shiftType,
-//         isActive: currentShift.status === ShiftStatus.ACTIVE,
-//         clockedIn: currentShift.isClockedIn,
-//         workDuration: currentShift.totalWorkDuration || 0,
-//         breaks: currentShift.breaks || [],
-//       },
-//     });
-//   } catch (error) {
-//     next(error);
-//   }
-// };
-
-// Helper functions for calculations
-
 const calculateWorkDuration = (
   clockIn: Date,
   clockOut: Date,

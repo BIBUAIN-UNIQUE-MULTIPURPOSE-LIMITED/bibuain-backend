@@ -43,6 +43,9 @@ const DECIMALS: Record<string, number> = {
   FDUSD: 8,
 };
 
+// In-memory storage for reset timers (in a production app, use Redis or a database)
+const resetTimers: Record<string, { expiresAt: Date }> = {};
+
 // This map tracks recently modified trades to prevent immediate reassignment
 const recentlyModifiedTrades = new Map<string, number>();
 
@@ -1263,65 +1266,6 @@ const checkDbConnection = async (): Promise<boolean> => {
 
 const processingLock = new Map<string, boolean>();
 
-// const upsertLiveTrades = async (liveTrades: any[]) => {
-//   const tradeRepo = dbConnect.getRepository(Trade);
-
-//   for (const t of liveTrades) {
-//     const lower = t.trade_status.toLowerCase();
-//     // map the platform‐string to your enum
-//     const statusMap: Record<string, TradeStatus> = {
-//       'active funded': TradeStatus.ACTIVE_FUNDED,
-//       'paid': TradeStatus.PAID,
-//       'completed': TradeStatus.COMPLETED,
-//       'successful': TradeStatus.SUCCESSFUL,
-//       'cancelled': TradeStatus.CANCELLED,
-//       'expired': TradeStatus.CANCELLED,
-//       'disputed': TradeStatus.DISPUTED,
-//     };
-//     const newStatus = statusMap[lower] ?? TradeStatus.ACTIVE_FUNDED;
-
-//     // build only the fields you need to upsert
-//     const mapped: Partial<Trade> = {
-//       tradeHash: t.trade_hash,
-//       accountId: t.accountId,
-//       platform: t.platform,
-//       tradeStatus: t.trade_status,
-//       status: newStatus,
-//       amount: t.fiat_amount_requested,
-//       cryptoAmountRequested: t.crypto_amount_requested,
-//       cryptoAmountTotal: t.crypto_amount_total,
-//       feeCryptoAmount: t.fee_crypto_amount,
-//       feePercentage: t.fee_percentage,
-//       sourceId: t.source_id,
-//       responderUsername: t.responder_username,
-//       ownerUsername: t.owner_username,
-//       paymentMethod: t.payment_method_name,
-//       locationIso: t.location_iso,
-//       fiatCurrency: t.fiat_currency_code,
-//       cryptoCurrencyCode: t.crypto_currency_code,
-//       isActiveOffer: t.is_active_offer,
-//       offerHash: t.offer_hash,
-//       margin: t.margin,
-//       btcRate: t.fiat_price_per_btc,
-//       btcNgnRate: t.fiat_price_per_crypto,
-//       usdtNgnRate: t.crypto_current_rate_usd,
-//       dollarRate: t.fiat_price_per_btc / t.crypto_current_rate_usd,
-//       ...(newStatus === TradeStatus.CANCELLED || newStatus === TradeStatus.COMPLETED || newStatus === TradeStatus.SUCCESSFUL || newStatus === TradeStatus.PAID
-//         ? { assignedPayerId: undefined }
-//         : {}
-//       ),
-//     };
-
-//     const existing = await tradeRepo.findOne({ where: { tradeHash: mapped.tradeHash } });
-//     if (existing) {
-//       // only overwrite the DB row once we know the new status
-//       await tradeRepo.update(existing.id, mapped);
-//     } else {
-//       await tradeRepo.save(mapped as Trade);
-//     }
-//   }
-// };
-
 const upsertLiveTrades = async (liveTrades: any[]) => {
   const tradeRepo = dbConnect.getRepository(Trade);
 
@@ -1438,112 +1382,107 @@ const aggregateLiveTrades = async (): Promise<any[]> => {
   return filtered;
 };
 
-// const syncCancelledTrades = async (): Promise<void> => {
-//   const services = await initializePlatformServices();
-//   const liveHashes = new Set<string>();
-
-//   // gather all active‐funded hashes
-//   for (const list of [services.paxful, services.noones]) {
-//     for (const svc of list) {
-//       try {
-//         const trades = await svc.listActiveTrades();
-//         trades.forEach((t: any) => liveHashes.add(t.trade_hash));
-//       } catch (err) {
-//         console.error('syncCancelledTrades list error:', err);
-//       }
-//     }
-//   }
-
-//   const repo = dbConnect.getRepository(Trade);
-//   const stale = await repo.find({
-//     where: [
-//       { status: TradeStatus.ACTIVE_FUNDED },
-//       { status: TradeStatus.ASSIGNED },
-//       { status: TradeStatus.ESCALATED },
-//       {
-//         tradeStatus: Not(TradeStatus.CANCELLED),
-//         status: Not(In([TradeStatus.COMPLETED, TradeStatus.ESCALATED])),
-//         isEscalated: true
-//       }
-//     ],
-//   });
-
-//   for (const t of stale) {
-//     if (!liveHashes.has(t.tradeHash)) {
-//       // t.status = TradeStatus.CANCELLED;
-//       // // t.notes = 'Auto‐cancelled: no longer active on platform';
-//       // t.assignedPayerId = undefined;
-//       // await repo.save(t);
-//       // console.log(`Auto‐cancelled trade ${t.tradeHash}`);
-//       await repo.delete(t.id);
-//       const io: Server = app.get("io");
-//       io.emit("tradeDeleted", { tradeId: t.id });
-//       console.log(`Auto-cancelled & notified deletion of ${t.tradeHash}`); 
-//     }
-//   }
-// };
-
 const syncCancelledTrades = async (): Promise<void> => {
-  const services = await initializePlatformServices();
-  const liveHashes = new Set<string>();
+  try {
+    const services = await initializePlatformServices();
+    const liveHashes = new Set<string>();
+    let fetchSuccess = false;
 
-  // gather all active‐funded hashes
-  for (const list of [services.paxful, services.noones]) {
-    for (const svc of list) {
-      try {
-        const trades = await svc.listActiveTrades();
-        trades.forEach((t: any) => liveHashes.add(t.trade_hash));
-      } catch (err) {
-        console.error('syncCancelledTrades list error:', err);
-      }
-    }
-  }
-
-  const repo = dbConnect.getRepository(Trade);
-  const stale = await repo.find({
-    where: [
-      { status: TradeStatus.ACTIVE_FUNDED },
-      { status: TradeStatus.ASSIGNED },
-      { status: TradeStatus.ESCALATED },
-      {
-        tradeStatus: Not(TradeStatus.CANCELLED),
-        status: Not(In([TradeStatus.COMPLETED, TradeStatus.ESCALATED])),
-        isEscalated: true
-      }
-    ],
-  });
-
-  for (const t of stale) {
-    if (!liveHashes.has(t.tradeHash)) {
-      // Store the assignedPayerId before deletion for notifications
-      const assignedPayerId = t.assignedPayerId;
-      const tradeId = t.id;
-
-      // Delete the trade
-      await repo.delete(t.id);
-      
-      // Get the io instance
-      const io: Server = app.get("io");
-      
-      // Emit generic deletion event (this works already in your code)
-      io.emit("tradeDeleted", { tradeId: t.id });
-      
-      // Also emit specific status change event (new)
-      if (assignedPayerId) {
-        // Use emitTradeStatusChange if available
-        if (typeof emitTradeStatusChange === 'function') {
-          emitTradeStatusChange(tradeId, TradeStatus.CANCELLED, assignedPayerId);
-        } else {
-          // Otherwise emit directly to the assigned payer's room
-          io.to(assignedPayerId).emit("tradeStatusChanged", {
-            tradeId,
-            status: TradeStatus.CANCELLED,
-          });
+    // gather all active trade hashes from external services
+    for (const list of [services.paxful, services.noones]) {
+      for (const svc of list) {
+        try {
+          const trades = await svc.listActiveTrades();
+          if (trades && Array.isArray(trades)) {
+            trades.forEach((t: any) => liveHashes.add(t.trade_hash));
+            fetchSuccess = true; // Mark that we successfully fetched from at least one service
+          }
+        } catch (err) {
+          console.error(`syncCancelledTrades list error for ${svc.accountId}:`, err);
         }
       }
-      
-      console.log(`Auto-cancelled & notified deletion of ${t.tradeHash}`);
     }
+
+    // Skip synchronization if we couldn't fetch from any services - prevents mass deletion on network failures
+    if (!fetchSuccess) {
+      console.error('syncCancelledTrades: Failed to fetch active trades from any service, skipping sync');
+      return;
+    }
+
+    const repo = dbConnect.getRepository(Trade);
+    const stale = await repo.find({
+      where: [
+        { status: TradeStatus.ACTIVE_FUNDED },
+        { status: TradeStatus.ASSIGNED },
+        { status: TradeStatus.ESCALATED },
+        {
+          tradeStatus: Not(TradeStatus.CANCELLED),
+          status: Not(In([TradeStatus.COMPLETED, TradeStatus.ESCALATED])),
+          isEscalated: true
+        }
+      ],
+    });
+
+    for (const t of stale) {
+      if (!liveHashes.has(t.tradeHash)) {
+        // Store the IDs before any operations for notifications
+        const assignedPayerId = t.assignedPayerId;
+        const tradeId = t.id;
+
+        // Get the io instance
+        const io: Server = app.get("io");
+
+        // Handle differently based on whether the trade is escalated
+        if (t.isEscalated || t.status === TradeStatus.ESCALATED) {
+          // Update escalated trades instead of deleting them
+          await repo.update(t.id, {
+            status: TradeStatus.CANCELLED,
+            tradeStatus: 'cancelled',
+            isEscalated: false,
+            assignedPayerId: undefined, // Clear assignment
+            completedAt: new Date() // Mark as completed now
+          });
+          
+          // Emit status change event
+          io.emit("tradeStatusChanged", {
+            tradeId: t.id,
+            status: TradeStatus.CANCELLED,
+          });
+          
+          console.log(`Updated escalated trade ${t.tradeHash} to CANCELLED`);
+        } else {
+          // Delete non-escalated trades as before
+          await repo.delete(t.id);
+          
+          // Emit generic deletion event
+          io.emit("tradeDeleted", { tradeId: t.id });
+          
+          console.log(`Auto-cancelled & deleted trade ${t.tradeHash}`);
+        }
+        
+        // Also emit specific status change event for assigned trades
+        if (assignedPayerId) {
+          // Use emitTradeStatusChange if available
+          if (typeof emitTradeStatusChange === 'function') {
+            emitTradeStatusChange(tradeId, TradeStatus.CANCELLED, assignedPayerId);
+          } else {
+            // Otherwise emit directly to the assigned payer's room
+            io.to(assignedPayerId).emit("tradeStatusChanged", {
+              tradeId,
+              status: TradeStatus.CANCELLED,
+            });
+          }
+        }
+        
+        // Mark this trade as recently modified to prevent reassignment
+        if (typeof markTradeAsModified === 'function') {
+          markTradeAsModified(t.tradeHash);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error in syncCancelledTrades:', error);
+    // Don't rethrow to prevent disrupting other operations
   }
 };
 
@@ -2426,111 +2365,124 @@ export const getCompletedPaidTrades = async (
   res: Response,
   next: NextFunction
 ) => {
-  const queryRunner = dbConnect.createQueryRunner();
-  await queryRunner.connect();
-
   try {
-    const userId = req?.user?.id;
-    const userType = req?.user?.userType ?? "";
+    const userId = req.user?.id;
+    const userType = req.user?.userType ?? "";
     const isPrivileged = ["admin", "customer-support"].includes(userType);
 
     const page = parseInt((req.query.page as string) || "1", 10);
     const limit = parseInt((req.query.limit as string) || "10", 10);
     const skip = (page - 1) * limit;
 
-    const tradeRepo = queryRunner.manager.getRepository(Trade);
-    let qb = tradeRepo
-      .createQueryBuilder("trade")
-      .leftJoinAndSelect("trade.assignedPayer", "assignedPayer")
-      .where("trade.status != :completedStatus", {
-        completedStatus: TradeStatus.COMPLETED
-      });
-
-    if (!isPrivileged) {
-      qb = qb.andWhere("assignedPayer.id = :userId", { userId });
-    } else if (typeof req.query.payerId === "string" && req.query.payerId.trim()) {
-      qb = qb.andWhere("assignedPayer.id = :payerId", { payerId: req.query.payerId });
-    }
-
-    const totalCount = await qb.getCount();
-    const totalPages = Math.ceil(totalCount / limit);
-
-    const dbTrades = await qb
-      .orderBy("trade.updatedAt", "DESC")
-      .skip(skip)
-      .take(limit)
-      .getMany();
-
+    // Initialize platform services
     const services = await initializePlatformServices();
-    const paidOrDisputedTrades: Trade[] = [];
+    let allTrades: any[] = [];
 
-    for (const trade of dbTrades) {
-      try {
-        const svcList = services[trade.platform as "noones" | "paxful"];
-        if (!svcList?.length) {
-          continue;
-        }
-
-        const svc = svcList.find((s) => s.accountId === trade.accountId);
-        if (!svc) {
-          continue;
-        }
-
-        const platformTrade = await svc.getTradeDetails(trade.tradeHash);
-        if (!platformTrade) {
-          continue;
-        }
-
-        const platformStatus = platformTrade.trade_status?.toLowerCase() || "";
-        const isPaid = platformStatus === "paid";
-        const isDisputed = platformStatus === "disputed" || !!platformTrade.dispute;
-
-        if (isPaid || isDisputed) {
-          const updatedStatus = isPaid ? TradeStatus.PAID : TradeStatus.DISPUTED;
-          const updateData: any = {
-            status: updatedStatus,
-            tradeStatus: platformStatus,
-            updatedAt: new Date(),
-          };
-
-          if (isPaid && platformTrade.paid_at) {
-            updateData.paidAt = new Date(platformTrade.paid_at);
+    // Collect trades from all platforms and accounts
+    for (const platform of Object.keys(services) as Array<"noones" | "paxful">) {
+      for (const service of services[platform]) {
+        try {
+          // Skip if user isn't privileged and doesn't match the payer ID filter
+          if (!isPrivileged && service.accountId !== userId) {
+            continue;
           }
 
-          if (isDisputed) {
-            if (platformTrade.dispute_started_at) {
-              updateData.disputeStartedAt = new Date(platformTrade.dispute_started_at);
-            }
-            if (platformTrade.dispute?.reason) {
-              updateData.disputeReason = platformTrade.dispute.reason;
-            }
-            if (platformTrade.dispute?.reason_type) {
-              updateData.disputeReasonType = platformTrade.dispute.reason_type;
-            }
+          // Skip if a specific payerId is requested but doesn't match this service
+          if (isPrivileged && 
+              typeof req.query.payerId === "string" && 
+              req.query.payerId.trim() && 
+              service.accountId !== req.query.payerId) {
+            continue;
           }
 
-          await tradeRepo.update(trade.id, updateData);
+          // Fetch trades directly from the platform
+          const platformTrades = await service.listActiveTrades();
+          
+          if (!platformTrades || !Array.isArray(platformTrades)) {
+            continue;
+          }
 
-          paidOrDisputedTrades.push({
-            ...trade,
-            ...updateData,
-          });
+          // Process each trade from the platform
+          for (const platformTrade of platformTrades) {
+            const platformStatus = (platformTrade.trade_status || "").toLowerCase();
+            const isPaid = platformStatus === "paid";
+            const isDisputed = platformStatus === "disputed" || !!platformTrade.dispute;
+
+            // Only include paid or disputed trades
+            if (isPaid || isDisputed) {
+              // Extract common fields (with platform-specific handling)
+              const owner = platformTrade.owner_username 
+                          
+              const username = platformTrade.responder_username
+                             
+              const amount = platformTrade.fiat_amount_requested || 
+                           platformTrade.amount_fiat || 
+                           platformTrade.amount || 
+                           "N/A";
+                           
+              const currency = platformTrade.fiat_currency_code || 
+                             platformTrade.fiat_code || 
+                             platformTrade.currency_code || 
+                             "USD";
+                             
+              const createdAt = platformTrade.created_at || 
+                              platformTrade.started_at || 
+                              platformTrade.timestamp 
+
+              const tradeDetails = {
+                id: platformTrade.id || platformTrade.trade_id,
+                tradeHash: platformTrade.trade_hash,
+                platform,
+                accountId: service.accountId,
+                status: isPaid ? "PAID" : "DISPUTED",
+                tradeStatus: platformStatus,
+                updatedAt: new Date(),
+                // Include essential trade information
+                owner,
+                username,
+                amount,
+                currency,
+                createdAt: new Date(createdAt),
+                assignedPayer: {
+                  id: service.accountId,
+                  username: service.label || "N/A",
+                },
+                // Include platform-specific data
+                platformData: platformTrade,
+                // Add status-specific timestamps
+                ...(isPaid && platformTrade.paid_at ? { paidAt: new Date(platformTrade.paid_at) } : {}),
+                ...(isDisputed ? {
+                  disputeStartedAt: platformTrade.dispute_started_at ? new Date(platformTrade.dispute_started_at) : new Date(),
+                  disputeReason: platformTrade.dispute?.reason || null,
+                  disputeReasonType: platformTrade.dispute?.reason_type || null,
+                } : {})
+              };
+
+              allTrades.push(tradeDetails);
+            }
+          }
+        } catch (error) {
+          console.error(`Error fetching trades from ${platform} (${service.accountId}):`, error);
+          // Continue with other services on error
         }
-      } catch (err) {
-        console.error(`Error checking platform status for trade ${trade.id}:`, err);
       }
     }
 
-    const filteredTotal = paidOrDisputedTrades.length;
-    const filteredTotalPages = Math.ceil(filteredTotal / limit);
+    // Sort trades by updatedAt date (newest first)
+    allTrades.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+
+    // Calculate pagination
+    const totalCount = allTrades.length;
+    const totalPages = Math.ceil(totalCount / limit);
+    const paginatedTrades = allTrades.slice(skip, skip + limit);
 
     return res.status(200).json({
       success: true,
       data: {
-        trades: paidOrDisputedTrades,
+        trades: paginatedTrades,
         pagination: {
-          total: filteredTotal,
-          totalPages: filteredTotalPages,
+          total: totalCount,
+          totalPages,
           currentPage: page,
           itemsPerPage: limit,
         },
@@ -2544,8 +2496,6 @@ export const getCompletedPaidTrades = async (
         500
       )
     );
-  } finally {
-    await queryRunner.release();
   }
 };
 
@@ -3178,9 +3128,6 @@ export const getVendorCoin = async (
     let totalVendorCoinBTC = 0;
     let totalVendorCoinUSDT = 0;
 
-    const tradeRepository = dbConnect.getRepository(Trade);
-    const processedTradeHashes = new Set<string>();
-
     // Flatten Paxful + Noones
     const allServices = [...services.paxful, ...services.noones];
 
@@ -3189,8 +3136,7 @@ export const getVendorCoin = async (
       const completedTrades = await svc.listCompletedTrades();
 
       for (const trade of completedTrades) {
-        // Platform payload uses `trade.trade_status`, not `trade.status`
-        const status = (trade.trade_status || "").toLowerCase();
+        const status = (trade.trade_status).toLowerCase();
         if (status !== "paid") continue;
 
         const code = (trade.crypto_currency_code || "").toUpperCase();
@@ -3576,6 +3522,7 @@ export const emitTradeStatusChange = (tradeId: string, status: string, assignedP
   
   console.log(`Emitted tradeStatusChanged for ${tradeId}: ${status}`);
 };
+
 
 function next(arg0: string, error: unknown) {
   throw new Error("Function not implemented.");
