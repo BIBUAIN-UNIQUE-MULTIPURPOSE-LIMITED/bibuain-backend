@@ -243,8 +243,8 @@ export const reloadFreshBanks = async () => {
     await bankRepo
       .createQueryBuilder()
       .update(Bank)
-      .set({ tag: BankTag.FRESH })
-      .where("tag IN (:...tags)", { tags: [BankTag.UNFUNDED, BankTag.ROLLOVER] })
+      .set({ tag: BankTag.UNFUNDED })
+      .where("tag IN (:...tags)", { tags: [BankTag.ROLLOVER] })
       .execute();
   } catch (error) {
     console.error("Error in reloadFreshBanks:", error);
