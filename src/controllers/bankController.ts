@@ -94,11 +94,21 @@ export const getFundedBanks = async (
 ) => {
   try {
     const bankRepo = dbConnect.getRepository(Bank);
-    const fundedBanks = await bankRepo.find({ where: { tag: BankTag.FUNDED } });
+    // fetch the bank, its current shift, and that shift's user
+    const fundedBanks = await bankRepo.find({
+      where: { tag: BankTag.FUNDED },
+      relations: ["shift", "shift.user"],
+    });
+
+    // Massage the response so each bank has a usedBy: fullName | null
+    const data = fundedBanks.map(bank => ({
+      ...bank,
+      usedBy: bank.shift?.user?.fullName || null,
+    }));
 
     res.status(200).json({
       success: true,
-      data: fundedBanks,
+      data,
     });
   } catch (error) {
     next(error);
@@ -189,29 +199,51 @@ export const useBank = async (
     const { id } = req.params;
     const { amountUsed, shiftId } = req.body;
 
+    // 1. Validate payload
+    if (typeof amountUsed !== "number" || !shiftId) {
+      throw new ErrorHandler(
+        "Request body must include numeric `amountUsed` and `shiftId`.",
+        400
+      );
+    }
+
     const bankRepo = dbConnect.getRepository(Bank);
     const shiftRepo = dbConnect.getRepository(Shift);
 
+    // 2. Fetch bank
     const bank = await bankRepo.findOne({ where: { id } });
     if (!bank) throw new ErrorHandler("Bank not found.", 404);
 
+    // 3. Fetch shift
     const shift = await shiftRepo.findOne({ where: { id: shiftId } });
     if (!shift) throw new ErrorHandler("Shift not found.", 404);
 
-    // Deduct funds and tag
+    // 4. Deduct funds and update tag
     const remaining = bank.funds - amountUsed;
-    bank.funds = remaining >= 0 ? remaining : 0;
-    bank.shift = shift;
-    bank.tag = bank.funds === 0 ? BankTag.ROLLOVER : BankTag.USED;
-    
+    bank.funds = Math.max(0, remaining);
+    bank.tag = bank.funds === 0 ? BankTag.ROLLOVER : BankTag.FUNDED;
 
-    // Log usage
+    // 5. Associate with the shift
+    bank.shift = shift;
+
+    // 6. Append log entry
     const logEntry = { description: `Used ${amountUsed}`, createdAt: new Date() };
     bank.logs = bank.logs ? [...bank.logs, logEntry] : [logEntry];
 
+    // 7. Persist
     await bankRepo.save(bank);
 
-    res.status(200).json({ success: true, data: bank });
+    // 8. Return
+    res.status(200).json({
+      success: true,
+      data: {
+        id: bank.id,
+        funds: bank.funds,
+        tag: bank.tag,
+        shiftId: shift.id,
+        logs: bank.logs,
+      },
+    });
   } catch (error) {
     next(error);
   }

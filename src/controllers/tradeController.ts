@@ -15,6 +15,8 @@ import { NotificationType, PriorityLevel } from "../models/notifications";
 import { Shift, ShiftStatus } from "../models/shift";
 import { Server } from "socket.io";
 import app from "../app";
+import { Bank, BankTag } from "../models/bank";
+import { io } from "../server";
 
 interface PlatformServices {
   noones: NoonesService[];
@@ -22,12 +24,6 @@ interface PlatformServices {
   binance: BinanceService[];
 }
 
-interface WalletBalance {
-  currency: string;
-  name: string;
-  balance: number;
-  type: string;
-}
 
 interface PlatformService {
   platform: string;
@@ -1864,6 +1860,7 @@ export const getTradeDetails = async (
 
     // 1) Pull raw messages & attachments
     const messages = Array.isArray(tradeChat.messages) ? tradeChat.messages : [];
+    
     const attachments = tradeChat.attachments || [];
 
     // 2) Find the first chat message carrying bank_account payload
@@ -2206,49 +2203,94 @@ export const markTradeAsPaid = async (
 ) => {
   try {
     const { tradeId } = req.params;
+    if (!tradeId) return next(new ErrorHandler("Trade ID is required", 400));
 
-    if (!tradeId) {
-      return next(new ErrorHandler("Trade ID is required", 400));
-    }
-
-    const tradeRepository = dbConnect.getRepository(Trade);
-    const trade = await tradeRepository.findOne({ where: { id: tradeId } });
-    if (!trade) {
-      return next(new ErrorHandler("Trade not found", 404));
-    }
-
-    // Only allow trades from paxful or noones
+    const tradeRepo = dbConnect.getRepository(Trade);
+    const trade = await tradeRepo.findOne({
+      where: { id: tradeId },
+      relations: ["assignedPayer"],
+    });
+    if (!trade) return next(new ErrorHandler("Trade not found", 404));
     if (trade.platform !== "paxful" && trade.platform !== "noones") {
       return next(new ErrorHandler("Unsupported platform", 400));
     }
 
     const services = await initializePlatformServices();
-    const platformService = services[trade.platform]?.find(
-      (s: any) => s.accountId === trade.accountId
-    );
-    if (!platformService) {
-      return next(new ErrorHandler("Platform service not found", 404));
+
+    let svc:
+      | PaxfulService
+      | NoonesService
+      | undefined;
+
+    if (trade.platform === "paxful") {
+      svc = services.paxful.find((s) => s.accountId === trade.accountId);
+    } else {
+      // must be "noones"
+      svc = services.noones.find((s) => s.accountId === trade.accountId);
     }
 
-    // Call the platform-specific methods to mark as paid
-    await platformService.markTradeAsPaid(trade.tradeHash);
+    if (!svc) {
+      return next(
+        new ErrorHandler(
+          `Platform service not found for ${trade.platform}`,
+          404
+        )
+      );
+    }
 
-    // Update trade status to completed in our database
+    await svc.markTradeAsPaid(trade.tradeHash);
+
+    // 2) Update trade status in our DB
     trade.status = TradeStatus.COMPLETED;
     trade.completedAt = new Date();
-    await tradeRepository.save(trade);
+    await tradeRepo.save(trade);
 
-    // Mark this trade as recently modified to prevent reassignment
-    markTradeAsModified(trade.tradeHash);
-    // console.log(`✅ TRADE MARKED AS PAID AND COMPLETED: ${trade.tradeHash}`);
 
-    return res.status(200).json({
-      success: true,
-      message: "Trade marked as paid and completed successfully",
-      trade
+    // 3) Locate the payer's active shift
+    const shiftRepo = dbConnect.getRepository(Shift);
+    const activeShift = await shiftRepo.findOne({
+      where: {
+        user: { id: trade.assignedPayer?.id },
+        status: ShiftStatus.ACTIVE,
+      },
     });
-  } catch (error) {
-    return next(error);
+    if (!activeShift) {
+      console.warn(`No active shift for payer ${trade.assignedPayer?.id}; skipping bank debit.`);
+    } else {
+      // 4) Find the bank tied to that shift
+      const bankRepo = dbConnect.getRepository(Bank);
+      const bank = await bankRepo.findOne({
+        where: { shift: { id: activeShift.id } },
+      });
+      if (bank) {
+        // 5) Deduct from bank.funds
+        const amountUsed = trade.amount|| 0;
+        const remaining = bank.funds - amountUsed;
+        bank.funds = remaining > 0 ? remaining : 0;
+        if (bank.funds === 0) {
+          bank.tag = BankTag.ROLLOVER;
+        }
+        // 6) Append log entry
+        const entry = { description: `Used ${amountUsed}`, createdAt: new Date() };
+        bank.logs = bank.logs ? [...bank.logs, entry] : [entry];
+        await bankRepo.save(bank);
+        
+      } else {
+        console.warn(`No bank found for shift ${activeShift.id}; user may not have selected one.`);
+      }
+    }
+
+    // 7) Prevent immediate reassignment
+    markTradeAsModified(trade.tradeHash);
+
+    // 8) Return full payload
+    res.status(200).json({
+      success: true,
+      message: "Trade paid and bank updated successfully",
+      data: { trade },
+    });
+  } catch (err) {
+    next(err);
   }
 };
 

@@ -74,6 +74,7 @@ app.use("/api/v1/chat", chatsRouter);
 app.use("/api/v1/message-templates", messageTemplateRoutes);
 app.use("/api/v1/message", messageRouter);
 
+//http://localhost:7001/api/v1/admin/create-admin
 
 // Static File Serving
 const uploadsDir = path.resolve();

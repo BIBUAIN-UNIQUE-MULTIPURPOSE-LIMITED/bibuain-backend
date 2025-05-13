@@ -41,7 +41,7 @@ export class Bank {
   tag!: BankTag;
 
   // Link to shift when bank is used in a shift
-  @ManyToOne(() => Shift, { nullable: true })
+  @ManyToOne(() => Shift, (shift) => shift.bank, { nullable: true })
   @JoinColumn({ name: "shift_id" })
   shift?: Shift;
 

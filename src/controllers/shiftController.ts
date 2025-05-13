@@ -431,7 +431,7 @@ export const forceEndShift: RequestHandler = async (
   }
 };
 
-export const getCurrentShift: RequestHandler = async (
+export const getCurrentShift = async (
   req: UserRequest,
   res: Response,
   next: NextFunction
@@ -440,72 +440,69 @@ export const getCurrentShift: RequestHandler = async (
     const userId = req.user?.id;
     if (!userId) throw new ErrorHandler("Unauthorized", 401);
 
+    const now = new Date();
+    const currentSession = getShiftTypeFromTime(now);
+
     const userRepo = dbConnect.getRepository(User);
     const shiftRepo = dbConnect.getRepository(Shift);
 
+    // load user record
     const user = await userRepo.findOne({ where: { id: userId } });
-    if (!user) throw new ErrorHandler("User not found", 404);
+    const isUserClockedIn = user?.clockedIn || false;
 
-    const now = new Date();
-    const shiftType = getShiftTypeFromTime(now);
-
-    const isUserClockedIn = user.clockedIn || false;
-
+    // load shift (include bank relation only)
     const currentShift = await shiftRepo.findOne({
-      where: {
-        user: { id: userId },
-        status: ShiftStatus.ACTIVE,
-      },
-      relations: ["user"],
+      where: { user: { id: userId }, status: ShiftStatus.ACTIVE },
+      relations: ["user", "bank"],
     });
 
+    // if user.clockedIn but no shift exists, correct it
     if (isUserClockedIn && !currentShift) {
       await userRepo.update(userId, { clockedIn: false });
-      
-      res.json({
+      return res.json({
         success: true,
-        message: "No active shift found, user status corrected",
+        message: "No active shift—status corrected",
         data: {
           shift: null,
-          currentSession: shiftType,
+          currentSession,
           isActive: false,
           clockedIn: false,
           workDuration: 0,
           breaks: [],
         },
       });
-      return;
     }
 
     if (!currentShift) {
-      res.json({
+      return res.json({
         success: true,
-        message: "No active shift found for current session",
+        message: "No active shift found",
         data: {
           shift: null,
-          currentSession: shiftType,
+          currentSession,
           isActive: false,
           clockedIn: false,
           workDuration: 0,
           breaks: [],
         },
       });
-      return; 
     }
-    res.json({
+
+    // finally return the live shift (breaks is just JSON)
+    return res.json({
       success: true,
       message: "Current shift retrieved successfully",
       data: {
         shift: currentShift,
-        currentSession: shiftType,
-        isActive: currentShift.status === ShiftStatus.ACTIVE,
-        clockedIn: currentShift.isClockedIn,  
+        currentSession,
+        isActive: true,
+        clockedIn: currentShift.isClockedIn,
         workDuration: currentShift.totalWorkDuration || 0,
         breaks: currentShift.breaks || [],
       },
     });
-  } catch (error) {
-    next(error);
+  } catch (err) {
+    next(err);
   }
 };
 
