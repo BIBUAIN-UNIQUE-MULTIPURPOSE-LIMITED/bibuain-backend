@@ -215,25 +215,42 @@ export const useBank = async (
     if (!bank) throw new ErrorHandler("Bank not found.", 404);
 
     // 3. Fetch shift
-    const shift = await shiftRepo.findOne({ where: { id: shiftId } });
+    const shift = await shiftRepo.findOne({ 
+      where: { id: shiftId },
+      relations: ["bank"] // Include the current bank relation
+    });
     if (!shift) throw new ErrorHandler("Shift not found.", 404);
 
-    // 4. Deduct funds and update tag
+    // 4. If this bank is different from current shift bank, release the old bank first
+    if (shift.bank && shift.bank.id !== bank.id) {
+      const oldBank = await bankRepo.findOne({ where: { id: shift.bank.id } });
+      if (oldBank) {
+        oldBank.shift = undefined;
+        await bankRepo.save(oldBank);
+      }
+    }
+
+    // 5. Deduct funds and update tag
     const remaining = bank.funds - amountUsed;
     bank.funds = Math.max(0, remaining);
     bank.tag = bank.funds === 0 ? BankTag.ROLLOVER : BankTag.FUNDED;
 
-    // 5. Associate with the shift
+    // 6. Associate with the shift
     bank.shift = shift;
+    shift.bank = bank;
 
-    // 6. Append log entry
-    const logEntry = { description: `Used ${amountUsed}`, createdAt: new Date() };
+    // 7. Append log entry
+    const logEntry = { 
+      description: `Assigned to shift ${shiftId} with initial amount used ${amountUsed}`, 
+      createdAt: new Date() 
+    };
     bank.logs = bank.logs ? [...bank.logs, logEntry] : [logEntry];
 
-    // 7. Persist
+    // 8. Persist changes
     await bankRepo.save(bank);
+    await shiftRepo.save(shift);
 
-    // 8. Return
+    // 9. Return updated data
     res.status(200).json({
       success: true,
       data: {
@@ -242,6 +259,8 @@ export const useBank = async (
         tag: bank.tag,
         shiftId: shift.id,
         logs: bank.logs,
+        bankName: bank.bankName, 
+        accountNumber: bank.accountNumber
       },
     });
   } catch (error) {
@@ -337,5 +356,19 @@ export const getFreshBanks = async (
     });
   } catch (error) {
     next(error);
+  }
+};
+
+// GET /banks/shift/:shiftId
+export const getBanksForShift = async (req: Request,
+  res: Response,
+  next: NextFunction) => {
+  try {
+    const bankRepo = dbConnect.getRepository(Bank);
+    const { shiftId } = req.params;
+    const banks = await bankRepo.find({ where: { shift: { id: shiftId } } });
+    res.status(200).json({ success: true, data: banks });
+  } catch (err) {
+    next(err);
   }
 };

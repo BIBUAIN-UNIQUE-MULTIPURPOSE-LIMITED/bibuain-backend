@@ -11,7 +11,8 @@ import {
   reloadFreshBanks,
   getUsedBanks,
   getFreshBanks,
-  getRolloverBanks
+  getRolloverBanks,
+  getBanksForShift
 } from "../controllers/bankController";
 import { authenticate, roleAuth } from "../middlewares/authenticate";
 import { UserType } from "../models/user";
@@ -82,6 +83,12 @@ router.post(
       next(err);
     }
   }
+);
+
+router.get(
+  "/shift/:shiftId",
+  roleAuth([UserType.PAYER, UserType.ADMIN, UserType.RATER]),
+  getBanksForShift
 );
 
 export default router;
