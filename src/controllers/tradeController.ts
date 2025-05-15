@@ -2801,9 +2801,15 @@ export const getAllTrades = async (
 
     // 1) Fetch live "Active Funded" trades
     const liveTrades = await aggregateLiveTrades();
-    const liveHashes = liveTrades
-      .filter(t => t.trade_status.toLowerCase() === 'active funded')
-      .map(t => t.trade_hash);
+    const liveFiltered = liveTrades.filter(
+      t => t.trade_status.toLowerCase() === 'active funded'
+    );
+    const liveHashes = liveFiltered.map(t => t.trade_hash);
+
+    // Build a quick map from tradeHash → live record
+    const liveMap = new Map<string, typeof liveFiltered[0]>(
+      liveFiltered.map(l => [l.trade_hash, l])
+    );
 
     // 2) Query DB for ACTIVE_FUNDED trades
     const tradeRepo = queryRunner.manager.getRepository(Trade);
@@ -2828,20 +2834,19 @@ export const getAllTrades = async (
     ): Promise<number> {
       try {
         const chat = await svc.getTradeChat(tradeHash);
-        // Paxful/Noones both return { messages: any[] } or array directly
         if (Array.isArray(chat)) return chat.length;
         if (Array.isArray(chat.messages)) return chat.messages.length;
         if (chat.data && Array.isArray(chat.data.messages)) {
           return chat.data.messages.length;
         }
-        // fallback to first array
         for (const key of Object.keys(chat || {})) {
           if (Array.isArray((chat as any)[key])) {
             return (chat as any)[key].length;
           }
         }
         return 0;
-      } catch {
+      } catch (e) {
+        console.error('Error fetching message count:', e);
         return 0;
       }
     }
@@ -2860,9 +2865,9 @@ export const getAllTrades = async (
             break;
         }
 
-        // Apply live values if applicable
-        if (liveHashes.includes(trade.tradeHash)) {
-          const live = liveTrades.find(l => l.trade_hash === trade.tradeHash)!;
+        // Pull in live data if it exists
+        const live = liveMap.get(trade.tradeHash);
+        if (live) {
           trade.amount = live.fiat_amount_requested;
           trade.cryptoCurrencyCode = live.crypto_currency_code;
           trade.fiatCurrency = live.fiat_currency_code;
@@ -2877,7 +2882,7 @@ export const getAllTrades = async (
           platform: trade.platform,
           accountId: trade.accountId,
           amount: trade.amount,
-          status: trade.status,
+          status: live?.trade_status,
           cryptoCurrencyCode: trade.cryptoCurrencyCode,
           fiatCurrency: trade.fiatCurrency,
           assignedPayer: trade.assignedPayer?.fullName,
@@ -2886,7 +2891,7 @@ export const getAllTrades = async (
           ownerUsername: trade.ownerUsername,
           responderUsername: trade.responderUsername,
           messageCount,
-          isLive: liveHashes.includes(trade.tradeHash),
+          isLive: Boolean(live),
         };
       })
     );
@@ -2894,11 +2899,8 @@ export const getAllTrades = async (
     // 5) Enhance purely live trades not in DB
     const dbHashSet = new Set(dbTrades.map(t => t.tradeHash));
     const enhancedLiveOnly = await Promise.all(
-      liveTrades
-        .filter(l =>
-          l.trade_status.toLowerCase() === 'active funded' &&
-          !dbHashSet.has(l.trade_hash)
-        )
+      liveFiltered
+        .filter(l => !dbHashSet.has(l.trade_hash))
         .map(async live => {
           let svc: PaxfulService | NoonesService | undefined;
           switch (live.platform) {
@@ -2918,7 +2920,7 @@ export const getAllTrades = async (
             platform: live.platform,
             accountId: live.accountId || live.account_id,
             amount: live.fiat_amount_requested,
-            status: TradeStatus.ACTIVE_FUNDED,
+            status: live.trade_status,
             cryptoCurrencyCode: live.crypto_currency_code,
             fiatCurrency: live.fiat_currency_code,
             ownerUsername: live.ownerUsername || live.owner_username,
@@ -2951,7 +2953,9 @@ export const getAllTrades = async (
     });
   } catch (err: any) {
     console.error('Error in getAllTrades:', err);
-    return next(new ErrorHandler(`Error retrieving trades: ${err.message}`, 500));
+    return next(
+      new ErrorHandler(`Error retrieving trades: ${err.message}`, 500)
+    );
   } finally {
     await queryRunner.release();
   }
@@ -3222,6 +3226,7 @@ export const escalateTrade = async (
     trade.escalationReason = reason;
     trade.escalatedById = escalatedById;
     trade.assignedPayerId = undefined;
+    trade.updatedAt = new Date();
     await tradeRepo.save(trade);
 
     const io: Server = app.get("io");
