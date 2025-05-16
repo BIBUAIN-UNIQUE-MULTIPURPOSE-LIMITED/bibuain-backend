@@ -108,6 +108,9 @@ export class Trade {
   })
   cryptoAmountRequested!: number;
 
+  @Column({ type: 'timestamptz', nullable: true, comment: 'Original trade time from platform' })
+  platformCreatedAt!: Date;
+
   @Column({
     type: "numeric",
     precision: 20,
@@ -207,10 +210,10 @@ export class Trade {
   btcAmount?: number;
 
   @Column({ name: "assigned_payer_id", type: "uuid", nullable: true })
-  assignedPayerId?: string;
+  assignedPayerId?: string | null;
 
   @Column({ type: "timestamp", nullable: true })
-  assignedAt?: Date;
+  assignedAt?: Date | null;
 
   @Column({ type: "timestamp", nullable: true })
   completedAt?: Date;

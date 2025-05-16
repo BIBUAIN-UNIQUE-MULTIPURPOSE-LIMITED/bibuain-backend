@@ -1304,6 +1304,7 @@ const upsertLiveTrades = async (liveTrades: any[]) => {
       btcRate: t.fiat_price_per_btc,
       btcNgnRate: t.fiat_price_per_crypto,
       usdtNgnRate: t.crypto_current_rate_usd,
+      platformCreatedAt: new Date(t.started_at),
       dollarRate: t.fiat_price_per_btc / t.crypto_current_rate_usd,
       ...(newStatus === TradeStatus.CANCELLED || newStatus === TradeStatus.COMPLETED || newStatus === TradeStatus.SUCCESSFUL || newStatus === TradeStatus.PAID
         ? { assignedPayerId: undefined }
@@ -1335,12 +1336,13 @@ const upsertLiveTrades = async (liveTrades: any[]) => {
         if (wasAssigned && (
           newStatus === TradeStatus.CANCELLED || 
           newStatus === TradeStatus.COMPLETED || 
-          newStatus === TradeStatus.SUCCESSFUL || 
+          newStatus === TradeStatus.SUCCESSFUL ||
+          newStatus === TradeStatus.DISPUTED || 
           newStatus === TradeStatus.PAID
         )) {
           // Use the emitTradeStatusChange function if available
           if (typeof emitTradeStatusChange === 'function') {
-            emitTradeStatusChange(existing.id, newStatus, existing.assignedPayerId);
+            emitTradeStatusChange(existing.id, newStatus, existing.assignedPayerId ?? undefined);
           }
           console.log(`Status changed for assigned trade ${existing.id}: ${existing.status} -> ${newStatus}`);
         }
@@ -1619,11 +1621,9 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
     }
 
     // 5) FIFO sort
-    toAssign.sort((a, b) => {
-      const aT = new Date(a.created_at || 0).getTime();
-      const bT = new Date(b.created_at || 0).getTime();
-      return aT - bT;
-    });
+    toAssign.sort((a, b) =>
+      new Date(a.platformCreatedAt).getTime() - new Date(b.platformCreatedAt).getTime()
+    );
 
     // 6) Determine free payers
     const available = await getAvailablePayers();
@@ -2308,12 +2308,13 @@ export const getPayerTrade = async (
       where: {
         assignedPayerId: id,
         isEscalated: false,
+        status: TradeStatus.ASSIGNED,
       },
       relations: {
         assignedPayer: true,
       },
       order: {
-        assignedAt: "DESC",
+        assignedAt: "ASC",
       },
     });
 
@@ -3225,7 +3226,8 @@ export const escalateTrade = async (
     trade.status = TradeStatus.ESCALATED;
     trade.escalationReason = reason;
     trade.escalatedById = escalatedById;
-    trade.assignedPayerId = undefined;
+    trade.assignedPayerId = null;
+    trade.assignedAt= null;
     trade.updatedAt = new Date();
     await tradeRepo.save(trade);
 
