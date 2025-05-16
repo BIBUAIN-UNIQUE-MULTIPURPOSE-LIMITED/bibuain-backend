@@ -20,7 +20,7 @@ const server = http.createServer(app);
 
 export const io = new Server(server, {
   cors: {
-    origin: ["http://localhost:5173", "https://app.bibuain.ng", "https://bibuain-frontend.onrender.com", "https://bibuain.onrender.com", '*', "https://main.d3k29622cc2yrv.amplifyapp.com"],
+    origin: ["http://localhost:5173", "https://app.bibuain.ng", "https://main.d251fvvwfaaim4.amplifyapp.com"],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     credentials: true,
   },
