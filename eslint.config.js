@@ -4,8 +4,7 @@ const parser = require('@typescript-eslint/parser');
 /** @type {import('eslint').Linter.Config} */
 module.exports = [
   {
-    ignores: ['dist/', 'eslint.config.js'],
-    "ignorePatterns": ["jest.config.js"],
+    ignores: ['dist/', 'eslint.config.js', 'jest.config.js'],
     languageOptions: {
       parser,
       parserOptions: {
