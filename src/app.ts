@@ -1,18 +1,9 @@
 import express, { NextFunction, Request, Response } from "express";
 import cors from "cors";
 import cron from "node-cron";
-import dbConnect from "./config/database";
-import {
-  In,
-  IsNull,
-  LessThan,
-  Not,
-} from "typeorm";
 import bodyParser from "body-parser";
 import cookieParser from "cookie-parser";
 import path from "path";
-import { Trade, TradeStatus } from "./models/trades";
-import { User, UserType } from "./models/user";
 import errorHandlerMiddleware from "./middlewares/errorMiddleware";
 import userRoutes from "./routes/userRoutes";
 import adminRoutes from "./routes/adminRoutes";
@@ -25,15 +16,12 @@ import messageTemplateRoutes from "./routes/templateMessages";
 import notificationRoutes from "./routes/notificationRoutes";
 import shiftRoutes from "./routes/shiftRoutes";
 import accountRoutes from "./routes/accountRoutes";
-import { fetchAndStoreTrades } from "./utils/fetchAndStoreTrades";
-// import { assignTradesToPayers } from "./utils/assignTradesToPayer";
-import { initializeShiftCrons } from "./utils/initiateShifts";
-// import {startChatMonitor} from "./controllers/tradeController"
+import { reloadFreshBanks } from "./controllers/bankController";
 const app = express();
 
 // CORS Configuration
 const corsOptions = {
-  origin: ["https://app.bibuain.ng", "http://localhost:5173", "https://bibuain.onrender.com", "https://bibuain-backend-jhq3.onrender.com", 'https://bibuain-frontend.onrender.com', '*', 'https://main.d3k29622cc2yrv.amplifyapp.com'],
+  origin: ["https://app.bibuain.ng", "http://localhost:5173", "https://main.d251fvvwfaaim4.amplifyapp.com"],
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"],
@@ -57,7 +45,21 @@ app.use(express.urlencoded({ extended: true }));
 
 // initializeShiftCrons();
 
-
+cron.schedule(
+  "0 1 * * *",
+  async () => {
+    try {
+      await reloadFreshBanks();
+      console.log("✅ Fresh banks reloaded at", new Date().toISOString());
+    } catch (err) {
+      console.error("❌ Error reloading fresh banks:", err);
+    }
+  },
+  {
+    scheduled: true,
+    timezone: "Africa/Lagos",
+  }
+);
 
 // API Routes
 app.use("/api/v1/admin", adminRoutes);
@@ -72,14 +74,7 @@ app.use("/api/v1/chat", chatsRouter);
 app.use("/api/v1/message-templates", messageTemplateRoutes);
 app.use("/api/v1/message", messageRouter);
 
-// (async () => {
-//   try {
-//     await startChatMonitor();
-//     console.log("Chat monitor started");
-//   } catch (err) {
-//     console.error("Failed to start chat monitor:", err);
-//   }
-// })();
+//http://localhost:7001/api/v1/admin/create-admin
 
 // Static File Serving
 const uploadsDir = path.resolve();

@@ -15,6 +15,8 @@ import { NotificationType, PriorityLevel } from "../models/notifications";
 import { Shift, ShiftStatus } from "../models/shift";
 import { Server } from "socket.io";
 import app from "../app";
+import { Bank, BankTag } from "../models/bank";
+import { io } from "../server";
 
 interface PlatformServices {
   noones: NoonesService[];
@@ -22,12 +24,6 @@ interface PlatformServices {
   binance: BinanceService[];
 }
 
-interface WalletBalance {
-  currency: string;
-  name: string;
-  balance: number;
-  type: string;
-}
 
 interface PlatformService {
   platform: string;
@@ -42,6 +38,9 @@ const DECIMALS: Record<string, number> = {
   BNB: 8,
   FDUSD: 8,
 };
+
+// In-memory storage for reset timers (in a production app, use Redis or a database)
+const resetTimers: Record<string, { expiresAt: Date }> = {};
 
 // This map tracks recently modified trades to prevent immediate reassignment
 const recentlyModifiedTrades = new Map<string, number>();
@@ -1263,65 +1262,6 @@ const checkDbConnection = async (): Promise<boolean> => {
 
 const processingLock = new Map<string, boolean>();
 
-// const upsertLiveTrades = async (liveTrades: any[]) => {
-//   const tradeRepo = dbConnect.getRepository(Trade);
-
-//   for (const t of liveTrades) {
-//     const lower = t.trade_status.toLowerCase();
-//     // map the platform‐string to your enum
-//     const statusMap: Record<string, TradeStatus> = {
-//       'active funded': TradeStatus.ACTIVE_FUNDED,
-//       'paid': TradeStatus.PAID,
-//       'completed': TradeStatus.COMPLETED,
-//       'successful': TradeStatus.SUCCESSFUL,
-//       'cancelled': TradeStatus.CANCELLED,
-//       'expired': TradeStatus.CANCELLED,
-//       'disputed': TradeStatus.DISPUTED,
-//     };
-//     const newStatus = statusMap[lower] ?? TradeStatus.ACTIVE_FUNDED;
-
-//     // build only the fields you need to upsert
-//     const mapped: Partial<Trade> = {
-//       tradeHash: t.trade_hash,
-//       accountId: t.accountId,
-//       platform: t.platform,
-//       tradeStatus: t.trade_status,
-//       status: newStatus,
-//       amount: t.fiat_amount_requested,
-//       cryptoAmountRequested: t.crypto_amount_requested,
-//       cryptoAmountTotal: t.crypto_amount_total,
-//       feeCryptoAmount: t.fee_crypto_amount,
-//       feePercentage: t.fee_percentage,
-//       sourceId: t.source_id,
-//       responderUsername: t.responder_username,
-//       ownerUsername: t.owner_username,
-//       paymentMethod: t.payment_method_name,
-//       locationIso: t.location_iso,
-//       fiatCurrency: t.fiat_currency_code,
-//       cryptoCurrencyCode: t.crypto_currency_code,
-//       isActiveOffer: t.is_active_offer,
-//       offerHash: t.offer_hash,
-//       margin: t.margin,
-//       btcRate: t.fiat_price_per_btc,
-//       btcNgnRate: t.fiat_price_per_crypto,
-//       usdtNgnRate: t.crypto_current_rate_usd,
-//       dollarRate: t.fiat_price_per_btc / t.crypto_current_rate_usd,
-//       ...(newStatus === TradeStatus.CANCELLED || newStatus === TradeStatus.COMPLETED || newStatus === TradeStatus.SUCCESSFUL || newStatus === TradeStatus.PAID
-//         ? { assignedPayerId: undefined }
-//         : {}
-//       ),
-//     };
-
-//     const existing = await tradeRepo.findOne({ where: { tradeHash: mapped.tradeHash } });
-//     if (existing) {
-//       // only overwrite the DB row once we know the new status
-//       await tradeRepo.update(existing.id, mapped);
-//     } else {
-//       await tradeRepo.save(mapped as Trade);
-//     }
-//   }
-// };
-
 const upsertLiveTrades = async (liveTrades: any[]) => {
   const tradeRepo = dbConnect.getRepository(Trade);
 
@@ -1364,6 +1304,7 @@ const upsertLiveTrades = async (liveTrades: any[]) => {
       btcRate: t.fiat_price_per_btc,
       btcNgnRate: t.fiat_price_per_crypto,
       usdtNgnRate: t.crypto_current_rate_usd,
+      platformCreatedAt: new Date(t.started_at),
       dollarRate: t.fiat_price_per_btc / t.crypto_current_rate_usd,
       ...(newStatus === TradeStatus.CANCELLED || newStatus === TradeStatus.COMPLETED || newStatus === TradeStatus.SUCCESSFUL || newStatus === TradeStatus.PAID
         ? { assignedPayerId: undefined }
@@ -1395,12 +1336,13 @@ const upsertLiveTrades = async (liveTrades: any[]) => {
         if (wasAssigned && (
           newStatus === TradeStatus.CANCELLED || 
           newStatus === TradeStatus.COMPLETED || 
-          newStatus === TradeStatus.SUCCESSFUL || 
+          newStatus === TradeStatus.SUCCESSFUL ||
+          newStatus === TradeStatus.DISPUTED || 
           newStatus === TradeStatus.PAID
         )) {
           // Use the emitTradeStatusChange function if available
           if (typeof emitTradeStatusChange === 'function') {
-            emitTradeStatusChange(existing.id, newStatus, existing.assignedPayerId);
+            emitTradeStatusChange(existing.id, newStatus, existing.assignedPayerId ?? undefined);
           }
           console.log(`Status changed for assigned trade ${existing.id}: ${existing.status} -> ${newStatus}`);
         }
@@ -1438,112 +1380,107 @@ const aggregateLiveTrades = async (): Promise<any[]> => {
   return filtered;
 };
 
-// const syncCancelledTrades = async (): Promise<void> => {
-//   const services = await initializePlatformServices();
-//   const liveHashes = new Set<string>();
-
-//   // gather all active‐funded hashes
-//   for (const list of [services.paxful, services.noones]) {
-//     for (const svc of list) {
-//       try {
-//         const trades = await svc.listActiveTrades();
-//         trades.forEach((t: any) => liveHashes.add(t.trade_hash));
-//       } catch (err) {
-//         console.error('syncCancelledTrades list error:', err);
-//       }
-//     }
-//   }
-
-//   const repo = dbConnect.getRepository(Trade);
-//   const stale = await repo.find({
-//     where: [
-//       { status: TradeStatus.ACTIVE_FUNDED },
-//       { status: TradeStatus.ASSIGNED },
-//       { status: TradeStatus.ESCALATED },
-//       {
-//         tradeStatus: Not(TradeStatus.CANCELLED),
-//         status: Not(In([TradeStatus.COMPLETED, TradeStatus.ESCALATED])),
-//         isEscalated: true
-//       }
-//     ],
-//   });
-
-//   for (const t of stale) {
-//     if (!liveHashes.has(t.tradeHash)) {
-//       // t.status = TradeStatus.CANCELLED;
-//       // // t.notes = 'Auto‐cancelled: no longer active on platform';
-//       // t.assignedPayerId = undefined;
-//       // await repo.save(t);
-//       // console.log(`Auto‐cancelled trade ${t.tradeHash}`);
-//       await repo.delete(t.id);
-//       const io: Server = app.get("io");
-//       io.emit("tradeDeleted", { tradeId: t.id });
-//       console.log(`Auto-cancelled & notified deletion of ${t.tradeHash}`); 
-//     }
-//   }
-// };
-
 const syncCancelledTrades = async (): Promise<void> => {
-  const services = await initializePlatformServices();
-  const liveHashes = new Set<string>();
+  try {
+    const services = await initializePlatformServices();
+    const liveHashes = new Set<string>();
+    let fetchSuccess = false;
 
-  // gather all active‐funded hashes
-  for (const list of [services.paxful, services.noones]) {
-    for (const svc of list) {
-      try {
-        const trades = await svc.listActiveTrades();
-        trades.forEach((t: any) => liveHashes.add(t.trade_hash));
-      } catch (err) {
-        console.error('syncCancelledTrades list error:', err);
-      }
-    }
-  }
-
-  const repo = dbConnect.getRepository(Trade);
-  const stale = await repo.find({
-    where: [
-      { status: TradeStatus.ACTIVE_FUNDED },
-      { status: TradeStatus.ASSIGNED },
-      { status: TradeStatus.ESCALATED },
-      {
-        tradeStatus: Not(TradeStatus.CANCELLED),
-        status: Not(In([TradeStatus.COMPLETED, TradeStatus.ESCALATED])),
-        isEscalated: true
-      }
-    ],
-  });
-
-  for (const t of stale) {
-    if (!liveHashes.has(t.tradeHash)) {
-      // Store the assignedPayerId before deletion for notifications
-      const assignedPayerId = t.assignedPayerId;
-      const tradeId = t.id;
-
-      // Delete the trade
-      await repo.delete(t.id);
-      
-      // Get the io instance
-      const io: Server = app.get("io");
-      
-      // Emit generic deletion event (this works already in your code)
-      io.emit("tradeDeleted", { tradeId: t.id });
-      
-      // Also emit specific status change event (new)
-      if (assignedPayerId) {
-        // Use emitTradeStatusChange if available
-        if (typeof emitTradeStatusChange === 'function') {
-          emitTradeStatusChange(tradeId, TradeStatus.CANCELLED, assignedPayerId);
-        } else {
-          // Otherwise emit directly to the assigned payer's room
-          io.to(assignedPayerId).emit("tradeStatusChanged", {
-            tradeId,
-            status: TradeStatus.CANCELLED,
-          });
+    // gather all active trade hashes from external services
+    for (const list of [services.paxful, services.noones]) {
+      for (const svc of list) {
+        try {
+          const trades = await svc.listActiveTrades();
+          if (trades && Array.isArray(trades)) {
+            trades.forEach((t: any) => liveHashes.add(t.trade_hash));
+            fetchSuccess = true; // Mark that we successfully fetched from at least one service
+          }
+        } catch (err) {
+          console.error(`syncCancelledTrades list error for ${svc.accountId}:`, err);
         }
       }
-      
-      console.log(`Auto-cancelled & notified deletion of ${t.tradeHash}`);
     }
+
+    // Skip synchronization if we couldn't fetch from any services - prevents mass deletion on network failures
+    if (!fetchSuccess) {
+      console.error('syncCancelledTrades: Failed to fetch active trades from any service, skipping sync');
+      return;
+    }
+
+    const repo = dbConnect.getRepository(Trade);
+    const stale = await repo.find({
+      where: [
+        { status: TradeStatus.ACTIVE_FUNDED },
+        { status: TradeStatus.ASSIGNED },
+        { status: TradeStatus.ESCALATED },
+        {
+          tradeStatus: Not(TradeStatus.CANCELLED),
+          status: Not(In([TradeStatus.COMPLETED, TradeStatus.ESCALATED])),
+          isEscalated: true
+        }
+      ],
+    });
+
+    for (const t of stale) {
+      if (!liveHashes.has(t.tradeHash)) {
+        // Store the IDs before any operations for notifications
+        const assignedPayerId = t.assignedPayerId;
+        const tradeId = t.id;
+
+        // Get the io instance
+        const io: Server = app.get("io");
+
+        // Handle differently based on whether the trade is escalated
+        if (t.isEscalated || t.status === TradeStatus.ESCALATED) {
+          // Update escalated trades instead of deleting them
+          await repo.update(t.id, {
+            status: TradeStatus.CANCELLED,
+            tradeStatus: 'cancelled',
+            isEscalated: false,
+            assignedPayerId: undefined, // Clear assignment
+            completedAt: new Date() // Mark as completed now
+          });
+          
+          // Emit status change event
+          io.emit("tradeStatusChanged", {
+            tradeId: t.id,
+            status: TradeStatus.CANCELLED,
+          });
+          
+          console.log(`Updated escalated trade ${t.tradeHash} to CANCELLED`);
+        } else {
+          // Delete non-escalated trades as before
+          await repo.delete(t.id);
+          
+          // Emit generic deletion event
+          io.emit("tradeDeleted", { tradeId: t.id });
+          
+          console.log(`Auto-cancelled & deleted trade ${t.tradeHash}`);
+        }
+        
+        // Also emit specific status change event for assigned trades
+        if (assignedPayerId) {
+          // Use emitTradeStatusChange if available
+          if (typeof emitTradeStatusChange === 'function') {
+            emitTradeStatusChange(tradeId, TradeStatus.CANCELLED, assignedPayerId);
+          } else {
+            // Otherwise emit directly to the assigned payer's room
+            io.to(assignedPayerId).emit("tradeStatusChanged", {
+              tradeId,
+              status: TradeStatus.CANCELLED,
+            });
+          }
+        }
+        
+        // Mark this trade as recently modified to prevent reassignment
+        if (typeof markTradeAsModified === 'function') {
+          markTradeAsModified(t.tradeHash);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error in syncCancelledTrades:', error);
+    // Don't rethrow to prevent disrupting other operations
   }
 };
 
@@ -1684,11 +1621,9 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
     }
 
     // 5) FIFO sort
-    toAssign.sort((a, b) => {
-      const aT = new Date(a.created_at || 0).getTime();
-      const bT = new Date(b.created_at || 0).getTime();
-      return aT - bT;
-    });
+    toAssign.sort((a, b) =>
+      new Date(a.platformCreatedAt).getTime() - new Date(b.platformCreatedAt).getTime()
+    );
 
     // 6) Determine free payers
     const available = await getAvailablePayers();
@@ -1925,6 +1860,7 @@ export const getTradeDetails = async (
 
     // 1) Pull raw messages & attachments
     const messages = Array.isArray(tradeChat.messages) ? tradeChat.messages : [];
+    
     const attachments = tradeChat.attachments || [];
 
     // 2) Find the first chat message carrying bank_account payload
@@ -2267,49 +2203,94 @@ export const markTradeAsPaid = async (
 ) => {
   try {
     const { tradeId } = req.params;
+    if (!tradeId) return next(new ErrorHandler("Trade ID is required", 400));
 
-    if (!tradeId) {
-      return next(new ErrorHandler("Trade ID is required", 400));
-    }
-
-    const tradeRepository = dbConnect.getRepository(Trade);
-    const trade = await tradeRepository.findOne({ where: { id: tradeId } });
-    if (!trade) {
-      return next(new ErrorHandler("Trade not found", 404));
-    }
-
-    // Only allow trades from paxful or noones
+    const tradeRepo = dbConnect.getRepository(Trade);
+    const trade = await tradeRepo.findOne({
+      where: { id: tradeId },
+      relations: ["assignedPayer"],
+    });
+    if (!trade) return next(new ErrorHandler("Trade not found", 404));
     if (trade.platform !== "paxful" && trade.platform !== "noones") {
       return next(new ErrorHandler("Unsupported platform", 400));
     }
 
     const services = await initializePlatformServices();
-    const platformService = services[trade.platform]?.find(
-      (s: any) => s.accountId === trade.accountId
-    );
-    if (!platformService) {
-      return next(new ErrorHandler("Platform service not found", 404));
+
+    let svc:
+      | PaxfulService
+      | NoonesService
+      | undefined;
+
+    if (trade.platform === "paxful") {
+      svc = services.paxful.find((s) => s.accountId === trade.accountId);
+    } else {
+      // must be "noones"
+      svc = services.noones.find((s) => s.accountId === trade.accountId);
     }
 
-    // Call the platform-specific methods to mark as paid
-    await platformService.markTradeAsPaid(trade.tradeHash);
+    if (!svc) {
+      return next(
+        new ErrorHandler(
+          `Platform service not found for ${trade.platform}`,
+          404
+        )
+      );
+    }
 
-    // Update trade status to completed in our database
+    await svc.markTradeAsPaid(trade.tradeHash);
+
+    // 2) Update trade status in our DB
     trade.status = TradeStatus.COMPLETED;
     trade.completedAt = new Date();
-    await tradeRepository.save(trade);
+    await tradeRepo.save(trade);
 
-    // Mark this trade as recently modified to prevent reassignment
-    markTradeAsModified(trade.tradeHash);
-    // console.log(`✅ TRADE MARKED AS PAID AND COMPLETED: ${trade.tradeHash}`);
 
-    return res.status(200).json({
-      success: true,
-      message: "Trade marked as paid and completed successfully",
-      trade
+    // 3) Locate the payer's active shift
+    const shiftRepo = dbConnect.getRepository(Shift);
+    const activeShift = await shiftRepo.findOne({
+      where: {
+        user: { id: trade.assignedPayer?.id },
+        status: ShiftStatus.ACTIVE,
+      },
     });
-  } catch (error) {
-    return next(error);
+    if (!activeShift) {
+      console.warn(`No active shift for payer ${trade.assignedPayer?.id}; skipping bank debit.`);
+    } else {
+      // 4) Find the bank tied to that shift
+      const bankRepo = dbConnect.getRepository(Bank);
+      const bank = await bankRepo.findOne({
+        where: { shift: { id: activeShift.id } },
+      });
+      if (bank) {
+        // 5) Deduct from bank.funds
+        const amountUsed = trade.amount|| 0;
+        const remaining = bank.funds - amountUsed;
+        bank.funds = remaining > 0 ? remaining : 0;
+        if (bank.funds === 0) {
+          bank.tag = BankTag.ROLLOVER;
+        }
+        // 6) Append log entry
+        const entry = { description: `Used ${amountUsed}`, createdAt: new Date() };
+        bank.logs = bank.logs ? [...bank.logs, entry] : [entry];
+        await bankRepo.save(bank);
+        
+      } else {
+        console.warn(`No bank found for shift ${activeShift.id}; user may not have selected one.`);
+      }
+    }
+
+    // 7) Prevent immediate reassignment
+    markTradeAsModified(trade.tradeHash);
+
+    // 8) Return full payload
+    res.status(200).json({
+      success: true,
+      message: "Trade paid and bank updated successfully",
+      data: { trade },
+    });
+  } catch (err) {
+    next(err);
   }
 };
 
@@ -2327,12 +2308,13 @@ export const getPayerTrade = async (
       where: {
         assignedPayerId: id,
         isEscalated: false,
+        status: TradeStatus.ASSIGNED,
       },
       relations: {
         assignedPayer: true,
       },
       order: {
-        assignedAt: "DESC",
+        assignedAt: "ASC",
       },
     });
 
@@ -2426,111 +2408,124 @@ export const getCompletedPaidTrades = async (
   res: Response,
   next: NextFunction
 ) => {
-  const queryRunner = dbConnect.createQueryRunner();
-  await queryRunner.connect();
-
   try {
-    const userId = req?.user?.id;
-    const userType = req?.user?.userType ?? "";
+    const userId = req.user?.id;
+    const userType = req.user?.userType ?? "";
     const isPrivileged = ["admin", "customer-support"].includes(userType);
 
     const page = parseInt((req.query.page as string) || "1", 10);
     const limit = parseInt((req.query.limit as string) || "10", 10);
     const skip = (page - 1) * limit;
 
-    const tradeRepo = queryRunner.manager.getRepository(Trade);
-    let qb = tradeRepo
-      .createQueryBuilder("trade")
-      .leftJoinAndSelect("trade.assignedPayer", "assignedPayer")
-      .where("trade.status != :completedStatus", {
-        completedStatus: TradeStatus.COMPLETED
-      });
-
-    if (!isPrivileged) {
-      qb = qb.andWhere("assignedPayer.id = :userId", { userId });
-    } else if (typeof req.query.payerId === "string" && req.query.payerId.trim()) {
-      qb = qb.andWhere("assignedPayer.id = :payerId", { payerId: req.query.payerId });
-    }
-
-    const totalCount = await qb.getCount();
-    const totalPages = Math.ceil(totalCount / limit);
-
-    const dbTrades = await qb
-      .orderBy("trade.updatedAt", "DESC")
-      .skip(skip)
-      .take(limit)
-      .getMany();
-
+    // Initialize platform services
     const services = await initializePlatformServices();
-    const paidOrDisputedTrades: Trade[] = [];
+    let allTrades: any[] = [];
 
-    for (const trade of dbTrades) {
-      try {
-        const svcList = services[trade.platform as "noones" | "paxful"];
-        if (!svcList?.length) {
-          continue;
-        }
-
-        const svc = svcList.find((s) => s.accountId === trade.accountId);
-        if (!svc) {
-          continue;
-        }
-
-        const platformTrade = await svc.getTradeDetails(trade.tradeHash);
-        if (!platformTrade) {
-          continue;
-        }
-
-        const platformStatus = platformTrade.trade_status?.toLowerCase() || "";
-        const isPaid = platformStatus === "paid";
-        const isDisputed = platformStatus === "disputed" || !!platformTrade.dispute;
-
-        if (isPaid || isDisputed) {
-          const updatedStatus = isPaid ? TradeStatus.PAID : TradeStatus.DISPUTED;
-          const updateData: any = {
-            status: updatedStatus,
-            tradeStatus: platformStatus,
-            updatedAt: new Date(),
-          };
-
-          if (isPaid && platformTrade.paid_at) {
-            updateData.paidAt = new Date(platformTrade.paid_at);
+    // Collect trades from all platforms and accounts
+    for (const platform of Object.keys(services) as Array<"noones" | "paxful">) {
+      for (const service of services[platform]) {
+        try {
+          // Skip if user isn't privileged and doesn't match the payer ID filter
+          if (!isPrivileged && service.accountId !== userId) {
+            continue;
           }
 
-          if (isDisputed) {
-            if (platformTrade.dispute_started_at) {
-              updateData.disputeStartedAt = new Date(platformTrade.dispute_started_at);
-            }
-            if (platformTrade.dispute?.reason) {
-              updateData.disputeReason = platformTrade.dispute.reason;
-            }
-            if (platformTrade.dispute?.reason_type) {
-              updateData.disputeReasonType = platformTrade.dispute.reason_type;
-            }
+          // Skip if a specific payerId is requested but doesn't match this service
+          if (isPrivileged && 
+              typeof req.query.payerId === "string" && 
+              req.query.payerId.trim() && 
+              service.accountId !== req.query.payerId) {
+            continue;
           }
 
-          await tradeRepo.update(trade.id, updateData);
+          // Fetch trades directly from the platform
+          const platformTrades = await service.listActiveTrades();
+          
+          if (!platformTrades || !Array.isArray(platformTrades)) {
+            continue;
+          }
 
-          paidOrDisputedTrades.push({
-            ...trade,
-            ...updateData,
-          });
+          // Process each trade from the platform
+          for (const platformTrade of platformTrades) {
+            const platformStatus = (platformTrade.trade_status || "").toLowerCase();
+            const isPaid = platformStatus === "paid";
+            const isDisputed = platformStatus === "disputed" || !!platformTrade.dispute;
+
+            // Only include paid or disputed trades
+            if (isPaid || isDisputed) {
+              // Extract common fields (with platform-specific handling)
+              const owner = platformTrade.owner_username 
+                          
+              const username = platformTrade.responder_username
+                             
+              const amount = platformTrade.fiat_amount_requested || 
+                           platformTrade.amount_fiat || 
+                           platformTrade.amount || 
+                           "N/A";
+                           
+              const currency = platformTrade.fiat_currency_code || 
+                             platformTrade.fiat_code || 
+                             platformTrade.currency_code || 
+                             "USD";
+                             
+              const createdAt = platformTrade.created_at || 
+                              platformTrade.started_at || 
+                              platformTrade.timestamp 
+
+              const tradeDetails = {
+                id: platformTrade.id || platformTrade.trade_id,
+                tradeHash: platformTrade.trade_hash,
+                platform,
+                accountId: service.accountId,
+                status: isPaid ? "PAID" : "DISPUTED",
+                tradeStatus: platformStatus,
+                updatedAt: new Date(),
+                // Include essential trade information
+                owner,
+                username,
+                amount,
+                currency,
+                createdAt: new Date(createdAt),
+                assignedPayer: {
+                  id: service.accountId,
+                  username: service.label || "N/A",
+                },
+                // Include platform-specific data
+                platformData: platformTrade,
+                // Add status-specific timestamps
+                ...(isPaid && platformTrade.paid_at ? { paidAt: new Date(platformTrade.paid_at) } : {}),
+                ...(isDisputed ? {
+                  disputeStartedAt: platformTrade.dispute_started_at ? new Date(platformTrade.dispute_started_at) : new Date(),
+                  disputeReason: platformTrade.dispute?.reason || null,
+                  disputeReasonType: platformTrade.dispute?.reason_type || null,
+                } : {})
+              };
+
+              allTrades.push(tradeDetails);
+            }
+          }
+        } catch (error) {
+          console.error(`Error fetching trades from ${platform} (${service.accountId}):`, error);
+          // Continue with other services on error
         }
-      } catch (err) {
-        console.error(`Error checking platform status for trade ${trade.id}:`, err);
       }
     }
 
-    const filteredTotal = paidOrDisputedTrades.length;
-    const filteredTotalPages = Math.ceil(filteredTotal / limit);
+    // Sort trades by updatedAt date (newest first)
+    allTrades.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+
+    // Calculate pagination
+    const totalCount = allTrades.length;
+    const totalPages = Math.ceil(totalCount / limit);
+    const paginatedTrades = allTrades.slice(skip, skip + limit);
 
     return res.status(200).json({
       success: true,
       data: {
-        trades: paidOrDisputedTrades,
+        trades: paginatedTrades,
         pagination: {
-          total: filteredTotal,
-          totalPages: filteredTotalPages,
+          total: totalCount,
+          totalPages,
           currentPage: page,
           itemsPerPage: limit,
         },
@@ -2544,8 +2539,6 @@ export const getCompletedPaidTrades = async (
         500
       )
     );
-  } finally {
-    await queryRunner.release();
   }
 };
 
@@ -2809,9 +2802,15 @@ export const getAllTrades = async (
 
     // 1) Fetch live "Active Funded" trades
     const liveTrades = await aggregateLiveTrades();
-    const liveHashes = liveTrades
-      .filter(t => t.trade_status.toLowerCase() === 'active funded')
-      .map(t => t.trade_hash);
+    const liveFiltered = liveTrades.filter(
+      t => t.trade_status.toLowerCase() === 'active funded'
+    );
+    const liveHashes = liveFiltered.map(t => t.trade_hash);
+
+    // Build a quick map from tradeHash → live record
+    const liveMap = new Map<string, typeof liveFiltered[0]>(
+      liveFiltered.map(l => [l.trade_hash, l])
+    );
 
     // 2) Query DB for ACTIVE_FUNDED trades
     const tradeRepo = queryRunner.manager.getRepository(Trade);
@@ -2836,20 +2835,19 @@ export const getAllTrades = async (
     ): Promise<number> {
       try {
         const chat = await svc.getTradeChat(tradeHash);
-        // Paxful/Noones both return { messages: any[] } or array directly
         if (Array.isArray(chat)) return chat.length;
         if (Array.isArray(chat.messages)) return chat.messages.length;
         if (chat.data && Array.isArray(chat.data.messages)) {
           return chat.data.messages.length;
         }
-        // fallback to first array
         for (const key of Object.keys(chat || {})) {
           if (Array.isArray((chat as any)[key])) {
             return (chat as any)[key].length;
           }
         }
         return 0;
-      } catch {
+      } catch (e) {
+        console.error('Error fetching message count:', e);
         return 0;
       }
     }
@@ -2868,9 +2866,9 @@ export const getAllTrades = async (
             break;
         }
 
-        // Apply live values if applicable
-        if (liveHashes.includes(trade.tradeHash)) {
-          const live = liveTrades.find(l => l.trade_hash === trade.tradeHash)!;
+        // Pull in live data if it exists
+        const live = liveMap.get(trade.tradeHash);
+        if (live) {
           trade.amount = live.fiat_amount_requested;
           trade.cryptoCurrencyCode = live.crypto_currency_code;
           trade.fiatCurrency = live.fiat_currency_code;
@@ -2885,7 +2883,7 @@ export const getAllTrades = async (
           platform: trade.platform,
           accountId: trade.accountId,
           amount: trade.amount,
-          status: trade.status,
+          status: live?.trade_status,
           cryptoCurrencyCode: trade.cryptoCurrencyCode,
           fiatCurrency: trade.fiatCurrency,
           assignedPayer: trade.assignedPayer?.fullName,
@@ -2894,7 +2892,7 @@ export const getAllTrades = async (
           ownerUsername: trade.ownerUsername,
           responderUsername: trade.responderUsername,
           messageCount,
-          isLive: liveHashes.includes(trade.tradeHash),
+          isLive: Boolean(live),
         };
       })
     );
@@ -2902,11 +2900,8 @@ export const getAllTrades = async (
     // 5) Enhance purely live trades not in DB
     const dbHashSet = new Set(dbTrades.map(t => t.tradeHash));
     const enhancedLiveOnly = await Promise.all(
-      liveTrades
-        .filter(l =>
-          l.trade_status.toLowerCase() === 'active funded' &&
-          !dbHashSet.has(l.trade_hash)
-        )
+      liveFiltered
+        .filter(l => !dbHashSet.has(l.trade_hash))
         .map(async live => {
           let svc: PaxfulService | NoonesService | undefined;
           switch (live.platform) {
@@ -2926,7 +2921,7 @@ export const getAllTrades = async (
             platform: live.platform,
             accountId: live.accountId || live.account_id,
             amount: live.fiat_amount_requested,
-            status: TradeStatus.ACTIVE_FUNDED,
+            status: live.trade_status,
             cryptoCurrencyCode: live.crypto_currency_code,
             fiatCurrency: live.fiat_currency_code,
             ownerUsername: live.ownerUsername || live.owner_username,
@@ -2959,7 +2954,9 @@ export const getAllTrades = async (
     });
   } catch (err: any) {
     console.error('Error in getAllTrades:', err);
-    return next(new ErrorHandler(`Error retrieving trades: ${err.message}`, 500));
+    return next(
+      new ErrorHandler(`Error retrieving trades: ${err.message}`, 500)
+    );
   } finally {
     await queryRunner.release();
   }
@@ -3178,9 +3175,6 @@ export const getVendorCoin = async (
     let totalVendorCoinBTC = 0;
     let totalVendorCoinUSDT = 0;
 
-    const tradeRepository = dbConnect.getRepository(Trade);
-    const processedTradeHashes = new Set<string>();
-
     // Flatten Paxful + Noones
     const allServices = [...services.paxful, ...services.noones];
 
@@ -3189,8 +3183,7 @@ export const getVendorCoin = async (
       const completedTrades = await svc.listCompletedTrades();
 
       for (const trade of completedTrades) {
-        // Platform payload uses `trade.trade_status`, not `trade.status`
-        const status = (trade.trade_status || "").toLowerCase();
+        const status = (trade.trade_status).toLowerCase();
         if (status !== "paid") continue;
 
         const code = (trade.crypto_currency_code || "").toUpperCase();
@@ -3233,7 +3226,9 @@ export const escalateTrade = async (
     trade.status = TradeStatus.ESCALATED;
     trade.escalationReason = reason;
     trade.escalatedById = escalatedById;
-    trade.assignedPayerId = undefined;
+    trade.assignedPayerId = null;
+    trade.assignedAt= null;
+    trade.updatedAt = new Date();
     await tradeRepo.save(trade);
 
     const io: Server = app.get("io");
@@ -3576,6 +3571,7 @@ export const emitTradeStatusChange = (tradeId: string, status: string, assignedP
   
   console.log(`Emitted tradeStatusChanged for ${tradeId}: ${status}`);
 };
+
 
 function next(arg0: string, error: unknown) {
   throw new Error("Function not implemented.");

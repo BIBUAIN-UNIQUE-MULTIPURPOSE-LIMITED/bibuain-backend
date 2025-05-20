@@ -6,8 +6,10 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   JoinColumn,
+  OneToOne,
 } from "typeorm";
 import { User, UserType } from "./user";
+import { Bank } from "./bank";
 
 export enum ShiftType {
   MORNING = "morning",
@@ -38,6 +40,9 @@ export class Shift {
   @ManyToOne(() => User, (user) => user.shifts)
   @JoinColumn({ name: "user_id" })
   user!: User;
+
+  @OneToOne(() => Bank, (bank) => bank.shift)
+  bank?: Bank;
 
   @Column({
     type: "enum",
