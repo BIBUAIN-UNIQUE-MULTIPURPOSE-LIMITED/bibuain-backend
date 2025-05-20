@@ -5,6 +5,7 @@ const parser = require('@typescript-eslint/parser');
 module.exports = [
   {
     ignores: ['dist/', 'eslint.config.js'],
+    "ignorePatterns": ["jest.config.js"],
     languageOptions: {
       parser,
       parserOptions: {
