@@ -59,7 +59,7 @@ router.delete(
   deleteBank
 );
 
-router.get('/used', roleAuth([UserType.ADMIN, UserType.RATER,]), getUsedBanks);
+router.get('/used', roleAuth([UserType.ADMIN, UserType.RATER, UserType.PAYER]), getUsedBanks);
 router.get('/rollover', roleAuth([UserType.ADMIN, UserType.RATER]), getRolloverBanks);
 router.get('/fresh', roleAuth([UserType.ADMIN, UserType.RATER]), getFreshBanks);
 

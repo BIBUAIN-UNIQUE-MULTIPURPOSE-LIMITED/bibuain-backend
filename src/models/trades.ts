@@ -27,7 +27,8 @@ export enum TradeStatus {
   DISPUTED = "disputed",
   ESCALATED = "escalated",
   PAID = "paid",
-  SUCCESSFUL = "successful"
+  SUCCESSFUL = "successful",
+  EXPIRED = "expired"
 }
 
 export enum FeedbackType {
@@ -132,6 +133,9 @@ export class Trade {
   
   @Column({ type: "boolean", default: false })
   isEscalated!: boolean;
+
+  @Column({ type: "boolean", default: false })
+  wasEscalated!: boolean;
   
   @Column({ type: "text", nullable: true })
   escalationReason!: string | null;
@@ -237,6 +241,30 @@ export class Trade {
     performedAt: Date;
     details?: Record<string, any>;
   }>;
+
+  // Queue Management Properties
+  @Column({ 
+    type: "int", 
+    nullable: true,
+    comment: "Position in the trade queue (1-based index)" 
+  })
+  @Index()
+  queuePosition?: number | null;
+
+  @Column({ 
+    type: "timestamptz", 
+    nullable: true,
+    comment: "When the trade was added to the queue" 
+  })
+  @Index()
+  queuedAt?: Date | null;
+
+  @Column({ 
+    type: "timestamptz", 
+    nullable: true,
+    comment: "Last time the queue was checked/processed for this trade" 
+  })
+  lastQueueCheck?: Date | null;
   
   @CreateDateColumn({
     type: 'timestamptz',

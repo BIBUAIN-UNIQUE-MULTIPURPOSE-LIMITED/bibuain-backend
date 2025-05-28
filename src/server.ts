@@ -296,12 +296,16 @@ io.on("connection", (socket) => {
 const PORT = process.env.PORT;
 (async () => {
   try {
-    await dbConnect.initialize();
-    console.log("✅ Database connected");
+    if (process.env.NODE_ENV !== 'test') {
+      await dbConnect.initialize();
+      console.log("✅ DB connection established");
+    }
 
-    server.listen(PORT, () => {
-      console.log(`🚀 Server is running on port ${PORT}`);
-    });
+    if (process.env.NODE_ENV !== 'test') {
+      server.listen(PORT, () => {
+        console.log(`🚀 Server is running on port ${PORT}`);
+      });
+    }
   } catch (err) {
     console.error("❌ Failed to connect to DB:", err);
     process.exit(1);

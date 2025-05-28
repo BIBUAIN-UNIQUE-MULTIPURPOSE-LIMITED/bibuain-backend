@@ -5,7 +5,8 @@ import { Shift, ShiftType, ShiftStatus, ShiftEndType } from "../models/shift";
 import { User, UserType } from "../models/user";
 import ErrorHandler from "../utils/errorHandler";
 import { io } from "../server";
-import { Between } from "typeorm";
+import { Between, In } from "typeorm";
+import { Bank, BankTag } from "../models/bank";
 
 
 const SHIFT_TIMES = {
@@ -100,39 +101,68 @@ export const clockIn: RequestHandler = async (
   }
 };
 
+export const updateBankStatusDuringShift = async (bankId: string, amountUsed: number) => {
+  const bankRepo = dbConnect.getRepository(Bank);
+  const bank = await bankRepo.findOne({ where: { id: bankId } });
+  
+  if (!bank) return;
+
+  const remaining = bank.funds - amountUsed;
+  bank.funds = Math.max(0, remaining);
+  
+  // Update status based on remaining funds
+  bank.tag = bank.funds > 0 ? BankTag.USED : BankTag.ROLLOVER;
+  
+  await bankRepo.save(bank);
+};
+
+// Update the clockOut function to handle bank status changes
 export const clockOut: RequestHandler = async (
   req: UserRequest,
   res: Response,
   next: NextFunction
-): Promise<void> => {  // Explicitly specify return type as Promise<void>
+): Promise<void> => {
   const userId = req.user?.id;
   if (!userId) {
     next(new ErrorHandler("Unauthorized", 401));
-    return;  // Return early without returning a value
+    return;
   }
 
   const userRepo = dbConnect.getRepository(User);
   const shiftRepo = dbConnect.getRepository(Shift);
+  const bankRepo = dbConnect.getRepository(Bank);
 
   try {
     const user = await userRepo.findOne({ where: { id: userId } });
     if (!user) {
       next(new ErrorHandler("User not found", 404));
-      return;  // Return early without returning a value
+      return;
     }
 
     let activeShift = await shiftRepo.findOne({
       where: { user: { id: userId }, status: ShiftStatus.ACTIVE },
+      relations: ["bank"]
     });
 
     if (!activeShift) {
       next(new ErrorHandler("No active shift found", 404));
-      return;  // Return early without returning a value
+      return;
     }
 
     const now = new Date();
 
     try {
+      // Update bank status if there's an associated bank
+      if (activeShift.bank) {
+        const bank = await bankRepo.findOne({ where: { id: activeShift.bank.id } });
+        if (bank) {
+          // Change status based on remaining funds
+          bank.tag = bank.funds > 0 ? BankTag.FUNDED : BankTag.ROLLOVER;
+          bank.shift = undefined;
+          await bankRepo.save(bank);
+        }
+      }
+
       // Gracefully close the shift
       activeShift.clockOutTime = now;
       activeShift.isClockedIn = false;
@@ -147,10 +177,7 @@ export const clockOut: RequestHandler = async (
       );
       activeShift.status = ShiftStatus.ENDED;
 
-      // First update the user's clockedIn status to false
       await userRepo.update(userId, { clockedIn: false });
-      
-      // Then save the shift
       await shiftRepo.save(activeShift);
 
       io.emit("shiftUpdate", {
@@ -166,12 +193,11 @@ export const clockOut: RequestHandler = async (
       });
     } catch (shiftError) {
       console.error("Error updating shift:", shiftError);
-      // Even if there's an error with the shift, make sure the user is clocked out
       await userRepo.update(userId, { clockedIn: false });
       
       activeShift.status = ShiftStatus.FORCE_CLOSED;
       activeShift.clockOutTime = now;
-      activeShift.isClockedIn = false; // Explicitly set isClockedIn to false
+      activeShift.isClockedIn = false;
       
       await shiftRepo.save(activeShift);
 
@@ -180,16 +206,26 @@ export const clockOut: RequestHandler = async (
   } catch (error) {
     console.error("Unexpected error during clock-out:", error);
     try {
-      // Make sure the user is marked as clocked out regardless of errors
       await userRepo.update(userId, { clockedIn: false });
       
       let activeShift = await shiftRepo.findOne({
         where: { user: { id: userId }, status: ShiftStatus.ACTIVE },
+        relations: ["bank"]
       });
       if (activeShift) {
+        // Update bank status if shift is force closed
+        if (activeShift.bank) {
+          const bank = await bankRepo.findOne({ where: { id: activeShift.bank.id } });
+          if (bank) {
+            bank.tag = bank.funds > 0 ? BankTag.FUNDED : BankTag.ROLLOVER;
+            bank.shift = undefined;
+            await bankRepo.save(bank);
+          }
+        }
+        
         activeShift.status = ShiftStatus.FORCE_CLOSED;
         activeShift.clockOutTime = new Date();
-        activeShift.isClockedIn = false; // Explicitly set isClockedIn to false
+        activeShift.isClockedIn = false;
         await shiftRepo.save(activeShift);
       }
     } catch (cleanupError) {
@@ -452,8 +488,11 @@ export const getCurrentShift = async (
 
     // load shift (include bank relation only)
     const currentShift = await shiftRepo.findOne({
-      where: { user: { id: userId }, status: ShiftStatus.ACTIVE },
-      relations: ["user", "bank"],
+      where: {
+        user: { id: userId },
+        status: In([ShiftStatus.ACTIVE, ShiftStatus.ON_BREAK]),
+      },
+      relations: ["user","bank"],
     });
 
     // if user.clockedIn but no shift exists, correct it
