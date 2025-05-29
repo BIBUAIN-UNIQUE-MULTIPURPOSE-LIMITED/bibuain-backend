@@ -13,8 +13,8 @@
     "test": "jest --detectOpenHandles --forceExit",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "migration:generate": "npm run typeorm -- migration:generate",
-    "migration:run":      "npm run typeorm -- migration:run"
+    "migration:generate": "npm run typeorm -- migration:generate -d src/config/database.ts",
+    "migration:run": "npm run typeorm -- migration:run -d src/config/database.ts"
   },
   "keywords": [],
   "author": "",
