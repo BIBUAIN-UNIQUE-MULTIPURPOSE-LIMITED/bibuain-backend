@@ -10,7 +10,7 @@
     "start": "node dist/server.js",
     "dev": "nodemon",
     "typeorm": "ts-node node_modules/typeorm/cli.js",
-    "test": "jest --detectOpenHandles --forceExit",
+    "test": "jest --detectOpenHandles --forceExit --verbose",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "migration:generate": "npm run typeorm -- migration:generate -d src/config/database.ts",

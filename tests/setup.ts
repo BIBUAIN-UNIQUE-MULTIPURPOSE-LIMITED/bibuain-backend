@@ -2,8 +2,8 @@ import { afterAll, afterEach, beforeAll, jest } from '@jest/globals';
 
 // Define types for platform services
 interface PlatformService {
-  markTradeAsPaid: jest.Mock<Promise<boolean>, [string]>;
-  listActiveTrades: jest.Mock<Promise<any[]>, []>;
+  markTradeAsPaid: jest.Mock;
+  listActiveTrades: jest.Mock;
   accountId?: string;
   label?: string;
 }
@@ -39,7 +39,7 @@ const mockDbConnect = {
   createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner),
   getRepository: jest.fn(),
   destroy: jest.fn().mockResolvedValue(undefined as never),
-  query: jest.fn().mockResolvedValue([{"1": 1}]),
+  query: jest.fn().mockResolvedValue([{"1": 1}] as never),
 };
 
 // Mock Socket.IO
@@ -54,7 +54,7 @@ const mockIo = {
 const mockPlatformServices: PlatformServices = {
   paxful: [{
     markTradeAsPaid: jest.fn().mockResolvedValue(true as never),
-    listActiveTrades: jest.fn().mockResolvedValue([]),
+    listActiveTrades: jest.fn().mockResolvedValue([] as never),
     accountId: 'account1',
     label: 'paxful-account',
   }],
@@ -161,19 +161,19 @@ jest.mock('../src/models/notifications', () => ({
 jest.mock('../src/config/paxful', () => ({
   PaxfulService: class PaxfulService {
     markTradeAsPaid = jest.fn().mockResolvedValue(true as never);
-    listActiveTrades = jest.fn().mockResolvedValue([]);
+    listActiveTrades = jest.fn().mockResolvedValue([] as never);
   },
   __esModule: true,
   default: {
     markTradeAsPaid: jest.fn().mockResolvedValue(true as never),
-    listActiveTrades: jest.fn().mockResolvedValue([]),
+    listActiveTrades: jest.fn().mockResolvedValue([] as never),
   },
 }));
 
 jest.mock('../src/config/noones', () => ({
   NoonesService: class NoonesService {
     markTradeAsPaid = jest.fn().mockResolvedValue(true as never);
-    listActiveTrades = jest.fn().mockResolvedValue([]);
+    listActiveTrades = jest.fn().mockResolvedValue([] as never);
   },
 }));
 

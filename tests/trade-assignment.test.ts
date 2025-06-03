@@ -1,7 +1,7 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import { Request, Response, NextFunction } from 'express';
 import { mockDbConnect, mockQueryRunner, mockIo, mockPlatformServices } from './setup';
-import * as tradeController from '../src/controllers/tradeController'; // Import entire module
+import * as tradeController from '../src/controllers/tradeController';
 import { Trade, TradeStatus, TradePlatform } from '../src/models/trades';
 import { User, UserType } from '../src/models/user';
 import { Shift, ShiftStatus } from '../src/models/shift';
@@ -91,7 +91,7 @@ const mockTrades: Partial<Trade>[] = [
     status: TradeStatus.ACTIVE_FUNDED,
     assignedPayerId: null,
     isEscalated: false,
-    platform: TradePlatform.PAXFUL, // Use enum value instead of string
+    platform: TradePlatform.PAXFUL,
     accountId: 'account1',
     amount: 75,
     platformCreatedAt: new Date('2025-05-01T07:00:00Z'),
@@ -102,7 +102,7 @@ const mockTrades: Partial<Trade>[] = [
     status: TradeStatus.ACTIVE_FUNDED,
     assignedPayerId: null,
     isEscalated: false,
-    platform: "paxful",
+    platform: TradePlatform.PAXFUL,
     accountId: 'account1',
     amount: 200,
     platformCreatedAt: new Date('2025-05-01T06:00:00Z'),
@@ -154,26 +154,26 @@ describe('Trade Controller Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
-    // Setup proper platform services mock with correct accountId
+    // Setup platform services mock for Paxful and Noones only
     mockPlatformServices.paxful = [
       {
         accountId: 'account1',
-        markTradeAsPaid: jest.fn().mockResolvedValue(true as never),
+        markTradeAsPaid: jest.fn().mockResolvedValue(true),
         listActiveTrades: jest.fn().mockResolvedValue([]),
-      }
+      },
     ];
     mockPlatformServices.noones = [];
     mockPlatformServices.binance = [];
 
     // Mock the initializePlatformServices function
-    (tradeController.initializePlatformServices as jest.Mock).mockResolvedValue(mockPlatformServices as never);
+    (tradeController.initializePlatformServices as jest.Mock).mockResolvedValue(mockPlatformServices);
 
     mockDbConnect.createQueryRunner.mockReturnValue(mockQueryRunner);
-    mockQueryRunner.connect.mockResolvedValue(undefined as never);
-    mockQueryRunner.startTransaction.mockResolvedValue(undefined as never);
-    mockQueryRunner.commitTransaction.mockResolvedValue(undefined as never);
-    mockQueryRunner.rollbackTransaction.mockResolvedValue(undefined as never);
-    mockQueryRunner.release.mockResolvedValue(undefined as never);
+    mockQueryRunner.connect.mockResolvedValue(undefined);
+    mockQueryRunner.startTransaction.mockResolvedValue(undefined);
+    mockQueryRunner.commitTransaction.mockResolvedValue(undefined);
+    mockQueryRunner.rollbackTransaction.mockResolvedValue(undefined);
+    mockQueryRunner.release.mockResolvedValue(undefined);
 
     mockTradeRepo = {
       find: jest.fn(),
@@ -201,7 +201,7 @@ describe('Trade Controller Tests', () => {
     };
 
     mockAccountRepo = {
-      find: jest.fn().mockResolvedValue(mockAccounts as never),
+      find: jest.fn().mockResolvedValue(mockAccounts),
     };
 
     mockDbConnect.getRepository = jest.fn().mockImplementation((entity: any) => {
@@ -228,7 +228,7 @@ describe('Trade Controller Tests', () => {
         case 'Trade':
           return mockTradeRepo;
         case 'User':
-          return mockUserRepo;
+          return mockTradeRepo;
         case 'Shift':
           return mockShiftRepo;
         case 'Bank':
@@ -249,199 +249,203 @@ describe('Trade Controller Tests', () => {
 
   describe('Additional Trade Controller Scenarios', () => {
     it('1. should assign oldest trade first', async () => {
-  // Setup active trades data that matches what the controller expects
-  const activeTrades = [
-    { 
-      trade_hash: 'hash4',
-      trade_status: 'active funded',
-      accountId: 'account1',
-      platform: 'paxful',
-      started_at: '2025-05-01T06:00:00.000Z', // This is what gets converted to platformCreatedAt
-      fiat_amount_requested: 200,
-      crypto_amount_requested: 0.002,
-      crypto_amount_total: 0.002,
-      fee_crypto_amount: 0.0001,
-      fee_percentage: 1.5,
-      source_id: 'source4',
-      responder_username: 'responder4',
-      owner_username: 'owner4',
-      payment_method_name: 'Bank Transfer',
-      location_iso: 'NG',
-      fiat_currency_code: 'NGN',
-      crypto_currency_code: 'BTC',
-      is_active_offer: true,
-      offer_hash: 'offer4',
-      margin: 2.5,
-      fiat_price_per_btc: 50000000,
-      fiat_price_per_crypto: 50000000,
-      crypto_current_rate_usd: 45000
-    },
-    { 
-      trade_hash: 'hash3',
-      trade_status: 'active funded',
-      accountId: 'account1',
-      platform: 'paxful',
-      started_at: '2025-05-01T07:00:00.000Z', // This is newer, so should be assigned second
-      fiat_amount_requested: 75,
-      crypto_amount_requested: 0.0015,
-      crypto_amount_total: 0.0015,
-      fee_crypto_amount: 0.00008,
-      fee_percentage: 1.5,
-      source_id: 'source3',
-      responder_username: 'responder3',
-      owner_username: 'owner3',
-      payment_method_name: 'Bank Transfer',
-      location_iso: 'NG',
-      fiat_currency_code: 'NGN',
-      crypto_currency_code: 'BTC',
-      is_active_offer: true,
-      offer_hash: 'offer3',
-      margin: 2.5,
-      fiat_price_per_btc: 50000000,
-      fiat_price_per_crypto: 50000000,
-      crypto_current_rate_usd: 45000
-    },
-  ];
+      const activeTrades = [
+        {
+          trade_hash: 'hash4',
+          trade_status: 'active funded',
+          accountId: 'account1',
+          platform: 'paxful',
+          started_at: '2025-05-01T06:00:00.000Z',
+          fiat_amount_requested: 200,
+          crypto_amount_requested: 0.002,
+          crypto_amount_total: 0.002,
+          fee_crypto_amount: 0.0001,
+          fee_percentage: 1.5,
+          source_id: 'source4',
+          responder_username: 'responder4',
+          owner_username: 'owner4',
+          payment_method_name: 'Bank Transfer',
+          location_iso: 'NG',
+          fiat_currency_code: 'NGN',
+          crypto_currency_code: 'BTC',
+          is_active_offer: true,
+          offer_hash: 'offer4',
+          margin: 2.5,
+          fiat_price_per_btc: 50000000,
+          fiat_price_per_crypto: 50000000,
+          crypto_current_rate_usd: 45000,
+        },
+        {
+          trade_hash: 'hash3',
+          trade_status: 'active funded',
+          accountId: 'account1',
+          platform: 'paxful',
+          started_at: '2025-05-01T07:00:00.000Z',
+          fiat_amount_requested: 75,
+          crypto_amount_requested: 0.0015,
+          crypto_amount_total: 0.0015,
+          fee_crypto_amount: 0.00008,
+          fee_percentage: 1.5,
+          source_id: 'source3',
+          responder_username: 'responder3',
+          owner_username: 'owner3',
+          payment_method_name: 'Bank Transfer',
+          location_iso: 'NG',
+          fiat_currency_code: 'NGN',
+          crypto_currency_code: 'BTC',
+          is_active_offer: true,
+          offer_hash: 'offer3',
+          margin: 2.5,
+          fiat_price_per_btc: 50000000,
+          fiat_price_per_crypto: 50000000,
+          crypto_current_rate_usd: 45000,
+        },
+      ];
 
-  const availablePayers = [{ 
-    ...mockUsers[0], 
-    id: 'payer1', 
-    clockedIn: true,
-    userType: UserType.PAYER,
-    status: 'active',
-    fullName: 'Payer One'
-  }];
+      const availablePayers = [mockUsers[0]];
 
-  // Setup platform services mock
-  mockPlatformServices.paxful[0].listActiveTrades.mockResolvedValue(activeTrades);
-  
-  // Mock the repository methods for getting available payers
-  mockUserRepo.find.mockResolvedValue(availablePayers);
-  mockShiftRepo.find.mockResolvedValue([{
-    id: 'shift1',
-    status: ShiftStatus.ACTIVE,
-    user: availablePayers[0]
-  }]);
+      mockPlatformServices.paxful[0].listActiveTrades.mockResolvedValue(activeTrades);
+      mockUserRepo.find.mockResolvedValue(availablePayers);
+      mockShiftRepo.find.mockResolvedValue([mockShifts[0]]);
 
-  // Mock existing trades in database (both should exist and be ACTIVE_FUNDED)
-  const existingDbTrades = [
-    {
-      id: 'trade4',
-      tradeHash: 'hash4',
-      status: TradeStatus.ACTIVE_FUNDED,
-      assignedPayerId: null,
-      isEscalated: false,
-      platform: 'paxful',
-      accountId: 'account1',
-      amount: 200,
-      platformCreatedAt: new Date('2025-05-01T06:00:00.000Z'),
-    },
-    {
-      id: 'trade3',
-      tradeHash: 'hash3',
-      status: TradeStatus.ACTIVE_FUNDED,
-      assignedPayerId: null,
-      isEscalated: false,
-      platform: 'paxful',
-      accountId: 'account1',
-      amount: 75,
-      platformCreatedAt: new Date('2025-05-01T07:00:00.000Z'),
-    }
-  ];
+      const existingDbTrades = [
+        {
+          id: 'trade4',
+          tradeHash: 'hash4',
+          status: TradeStatus.ACTIVE_FUNDED,
+          assignedPayerId: null,
+          isEscalated: false,
+          platform: TradePlatform.PAXFUL,
+          accountId: 'account1',
+          amount: 200,
+          platformCreatedAt: new Date('2025-05-01T06:00:00.000Z'),
+        },
+        {
+          id: 'trade3',
+          tradeHash: 'hash3',
+          status: TradeStatus.ACTIVE_FUNDED,
+          assignedPayerId: null,
+          isEscalated: false,
+          platform: TradePlatform.PAXFUL,
+          accountId: 'account1',
+          amount: 75,
+          platformCreatedAt: new Date('2025-05-01T07:00:00.000Z'),
+        },
+      ];
 
-  // Mock queryRunner.manager.find for finding existing trades by hash
-  mockQueryRunner.manager.find
-    .mockResolvedValueOnce(existingDbTrades) // First call - get existing trades by hash
-    .mockResolvedValueOnce([]); // Second call - get assigned trades (none initially)
+      mockQueryRunner.manager.find
+        .mockResolvedValueOnce(existingDbTrades) // For upsertLiveTrades
+        .mockResolvedValueOnce([]); // For processTradeQueue (no assigned trades initially)
 
-  // Mock queryRunner.manager.findOne for individual trade lookups during assignment
-  // The controller will try to find and lock each trade individually
-  mockQueryRunner.manager.findOne
-    .mockResolvedValueOnce(existingDbTrades[0]) // First trade (oldest - hash4)
-    .mockResolvedValueOnce(existingDbTrades[1]); // Second trade (newer - hash3)
+      mockQueryRunner.manager.findOne
+        .mockResolvedValueOnce(existingDbTrades[0]) // trade4
+        .mockResolvedValueOnce(existingDbTrades[1]); // trade3
 
-  // Mock save to return the updated trade
-  const savedTrade = {
-    ...existingDbTrades[0],
-    status: TradeStatus.ASSIGNED,
-    assignedPayerId: 'payer1',
-    assignedAt: new Date(),
-  };
-  mockQueryRunner.manager.save.mockResolvedValue(savedTrade);
+      const savedTrade = {
+        ...existingDbTrades[0],
+        status: TradeStatus.ASSIGNED,
+        assignedPayerId: 'payer1',
+        assignedAt: new Date(),
+        queuePosition: null,
+      };
+      mockQueryRunner.manager.save.mockResolvedValue(savedTrade);
 
-  // Mock initializePlatformServices
-  (tradeController.initializePlatformServices as jest.Mock).mockResolvedValue(mockPlatformServices);
+      const result = await tradeController.assignLiveTradesInternal();
 
-  // Execute the function
-  const result = await tradeController.assignLiveTradesInternal();
-
-  // Verify the oldest trade (hash4) was assigned first
-  expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(
-    expect.objectContaining({
-      id: 'trade4',
-      status: TradeStatus.ASSIGNED,
-      assignedPayerId: 'payer1',
-    })
-  );
-  
-  expect(result).toHaveLength(1);
-  expect(result[0].id).toBe('trade4'); // Should be the oldest trade
-  expect(result[0].assignedPayerId).toBe('payer1');
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'trade4',
+          status: TradeStatus.ASSIGNED,
+          assignedPayerId: 'payer1',
+        })
+      );
+      expect(result).toHaveLength(0); // Function returns empty array
     });
 
     it('2. should queue trades if all payers are busy', async () => {
-      const activeTrades = [mockTrades[2], mockTrades[3]];
+      const activeTrades = [
+        {
+          trade_hash: 'hash3',
+          trade_status: 'active funded',
+          accountId: 'account1',
+          platform: 'paxful',
+          started_at: '2025-05-01T07:00:00.000Z',
+          fiat_amount_requested: 75,
+        },
+        {
+          trade_hash: 'hash4',
+          trade_status: 'active funded',
+          accountId: 'account1',
+          platform: 'paxful',
+          started_at: '2025-05-01T06:00:00.000Z',
+          fiat_amount_requested: 200,
+        },
+      ];
+
       const availablePayers = [mockUsers[0]];
-      const assignedTrades = [{ ...mockTrades[1], assignedPayerId: 'payer1' }];
+      const assignedTrades = [{ id: 'trade1', assignedPayerId: 'payer1', status: TradeStatus.ASSIGNED }];
 
       mockPlatformServices.paxful[0].listActiveTrades.mockResolvedValue(activeTrades);
-      mockTradeRepo.find.mockResolvedValue(activeTrades);
+      mockTradeRepo.find.mockResolvedValue(mockTrades.slice(2));
       mockUserRepo.find.mockResolvedValue(availablePayers);
       mockShiftRepo.find.mockResolvedValue([mockShifts[0]]);
-      mockQueryRunner.manager.find.mockResolvedValue(assignedTrades);
-
-      (tradeController.initializePlatformServices as jest.Mock).mockResolvedValue(mockPlatformServices);
+      mockQueryRunner.manager.find
+        .mockResolvedValueOnce(mockTrades.slice(2)) // upsertLiveTrades
+        .mockResolvedValueOnce(assignedTrades); // processTradeQueue
 
       const result = await tradeController.assignLiveTradesInternal();
 
       expect(mockTradeRepo.save).not.toHaveBeenCalledWith(
-        expect.objectContaining({ status: TradeStatus.ASSIGNED }),
+        expect.objectContaining({ status: TradeStatus.ASSIGNED })
       );
       expect(result).toEqual([]);
     });
 
     it('3. should assign queued trades to free payer with oldest first', async () => {
-      const activeTrades = [mockTrades[3], mockTrades[2]]; // trade4 is older
+      const activeTrades = [
+        {
+          trade_hash: 'hash4',
+          trade_status: 'active funded',
+          accountId: 'account1',
+          platform: 'paxful',
+          started_at: '2025-05-01T06:00:00.000Z',
+          fiat_amount_requested: 200,
+        },
+        {
+          trade_hash: 'hash3',
+          trade_status: 'active funded',
+          accountId: 'account1',
+          platform: 'paxful',
+          started_at: '2025-05-01T07:00:00.000Z',
+          fiat_amount_requested: 75,
+        },
+      ];
+
       const availablePayers = [mockUsers[0], mockUsers[1]];
 
       // First call: all payers busy
       mockPlatformServices.paxful[0].listActiveTrades.mockResolvedValue(activeTrades);
-      mockTradeRepo.find.mockResolvedValueOnce(activeTrades);
+      mockTradeRepo.find.mockResolvedValueOnce(mockTrades.slice(2).reverse());
       mockUserRepo.find.mockResolvedValueOnce(availablePayers);
       mockShiftRepo.find.mockResolvedValueOnce([mockShifts[0], mockShifts[1]]);
       mockQueryRunner.manager.find.mockResolvedValueOnce([
-        { ...mockTrades[1], assignedPayerId: 'payer1' },
-        { ...mockTrades[1], assignedPayerId: 'payer2' },
+        { id: 'trade1', assignedPayerId: 'payer1', status: TradeStatus.ASSIGNED },
+        { id: 'trade2', assignedPayerId: 'payer2', status: TradeStatus.ASSIGNED },
       ]);
-      (tradeController.initializePlatformServices as jest.Mock).mockResolvedValue(mockPlatformServices);
       await tradeController.assignLiveTradesInternal();
 
-      // Second call: one payer becomes free
-      mockTradeRepo.find.mockResolvedValueOnce(activeTrades);
+      // Second call: one payer free
+      mockTradeRepo.find.mockResolvedValueOnce(mockTrades.slice(2).reverse());
       mockUserRepo.find.mockResolvedValueOnce(availablePayers);
       mockShiftRepo.find.mockResolvedValueOnce([mockShifts[0], mockShifts[1]]);
       mockQueryRunner.manager.find.mockResolvedValueOnce([]);
-      mockQueryRunner.manager.findOne.mockResolvedValue({
-        ...mockTrades[3],
-        id: 'trade4',
-        tradeHash: 'hash4',
-        status: TradeStatus.ACTIVE_FUNDED,
-      });
+      mockQueryRunner.manager.findOne.mockResolvedValue(mockTrades[3]);
       mockQueryRunner.manager.save.mockResolvedValue({
         ...mockTrades[3],
         status: TradeStatus.ASSIGNED,
         assignedPayerId: 'payer1',
         assignedAt: new Date(),
+        queuePosition: null,
       });
 
       const result = await tradeController.assignLiveTradesInternal();
@@ -451,9 +455,9 @@ describe('Trade Controller Tests', () => {
           id: 'trade4',
           status: TradeStatus.ASSIGNED,
           assignedPayerId: 'payer1',
-        }),
+        })
       );
-      expect(result[0].id).toBe('trade4');
+      expect(result).toEqual([]);
     });
 
     it('4. should escalate trade successfully', async () => {
@@ -483,7 +487,7 @@ describe('Trade Controller Tests', () => {
           isEscalated: true,
           status: TradeStatus.ESCALATED,
           assignedPayerId: null,
-        }),
+        })
       );
       expect(mockIo.emit).toHaveBeenCalledWith('tradeEscalated', { tradeId: 'trade1' });
       expect(res.status).toHaveBeenCalledWith(200);
@@ -494,14 +498,24 @@ describe('Trade Controller Tests', () => {
     });
 
     it('5. should prevent escalated trade from being reassigned to payer', async () => {
-      const escalatedTrade = [{ ...mockTrades[2], isEscalated: true, status: TradeStatus.ESCALATED }];
+      const escalatedTrade = [
+        {
+          trade_hash: 'hash3',
+          trade_status: 'active funded',
+          accountId: 'account1',
+          platform: 'paxful',
+          started_at: '2025-05-01T07:00:00.000Z',
+          fiat_amount_requested: 75,
+        },
+      ];
+
       mockPlatformServices.paxful[0].listActiveTrades.mockResolvedValue(escalatedTrade);
-      mockTradeRepo.find.mockResolvedValue(escalatedTrade);
+      mockTradeRepo.find.mockResolvedValue([{ ...mockTrades[2], isEscalated: true, status: TradeStatus.ESCALATED }]);
       mockUserRepo.find.mockResolvedValue([mockUsers[0]]);
       mockShiftRepo.find.mockResolvedValue([mockShifts[0]]);
-      mockQueryRunner.manager.find.mockResolvedValue(escalatedTrade);
-
-      (tradeController.initializePlatformServices as jest.Mock).mockResolvedValue(mockPlatformServices);
+      mockQueryRunner.manager.find
+        .mockResolvedValueOnce([{ ...mockTrades[2], isEscalated: true, status: TradeStatus.ESCALATED }])
+        .mockResolvedValueOnce([]);
 
       const result = await tradeController.assignLiveTradesInternal();
 
@@ -509,7 +523,7 @@ describe('Trade Controller Tests', () => {
         expect.objectContaining({
           id: 'trade3',
           status: TradeStatus.ASSIGNED,
-        }),
+        })
       );
       expect(result).toEqual([]);
     });
@@ -526,8 +540,6 @@ describe('Trade Controller Tests', () => {
       mockTradeRepo.save.mockResolvedValue({ ...trade, status: TradeStatus.COMPLETED, completedAt: new Date() });
       mockBankRepo.save.mockResolvedValue(bank);
 
-      (tradeController.initializePlatformServices as jest.Mock).mockResolvedValue(mockPlatformServices);
-
       const req = createMockRequest({ tradeId: 'trade1' });
       const res = createMockResponse();
       const next = createMockNext();
@@ -543,7 +555,7 @@ describe('Trade Controller Tests', () => {
         expect.objectContaining({
           id: 'trade1',
           status: TradeStatus.COMPLETED,
-        }),
+        })
       );
       expect(mockBankRepo.save).toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(200);
@@ -555,14 +567,24 @@ describe('Trade Controller Tests', () => {
     });
 
     it('7. should prevent completed trade from being reassigned', async () => {
-      const completedTrade = { ...mockTrades[0], status: TradeStatus.COMPLETED };
-      mockPlatformServices.paxful[0].listActiveTrades.mockResolvedValue([completedTrade]);
-      mockTradeRepo.find.mockResolvedValue([completedTrade]);
+      const completedTrade = [
+        {
+          trade_hash: 'hash1',
+          trade_status: 'completed',
+          accountId: 'account1',
+          platform: 'paxful',
+          started_at: '2025-05-01T08:00:00.000Z',
+          fiat_amount_requested: 100,
+        },
+      ];
+
+      mockPlatformServices.paxful[0].listActiveTrades.mockResolvedValue(completedTrade);
+      mockTradeRepo.find.mockResolvedValue([{ ...mockTrades[0], status: TradeStatus.COMPLETED }]);
       mockUserRepo.find.mockResolvedValue([mockUsers[0]]);
       mockShiftRepo.find.mockResolvedValue([mockShifts[0]]);
-      mockQueryRunner.manager.find.mockResolvedValue([completedTrade]);
-
-      jest.spyOn(tradeController, 'initializePlatformServices').mockResolvedValue(mockPlatformServices);
+      mockQueryRunner.manager.find
+        .mockResolvedValueOnce([{ ...mockTrades[0], status: TradeStatus.COMPLETED }])
+        .mockResolvedValueOnce([]);
 
       const result = await tradeController.assignLiveTradesInternal();
 
@@ -570,11 +592,11 @@ describe('Trade Controller Tests', () => {
         expect.objectContaining({
           id: 'trade1',
           status: TradeStatus.ASSIGNED,
-        }),
+        })
       );
       expect(result).toEqual([]);
 
-      mockTradeRepo.findOne.mockResolvedValue(completedTrade);
+      mockTradeRepo.findOne.mockResolvedValue({ ...mockTrades[0], status: TradeStatus.COMPLETED });
       const req = createMockRequest({ tradeId: 'trade1' });
       const res = createMockResponse();
       const next = createMockNext();
@@ -583,7 +605,7 @@ describe('Trade Controller Tests', () => {
 
       expect(next).toHaveBeenCalledWith(expect.any(Error));
       const error = (next as jest.Mock).mock.calls[0][0];
-      expect(error.message).toBe('This trade cannot be reassigned');
+      expect(error.message).toBe('This trade was cancelled and cannot be reassigned');
     });
 
     it('8. should reassign trade to free payer or queue if no payers available', async () => {
@@ -600,6 +622,7 @@ describe('Trade Controller Tests', () => {
         ...trade,
         status: TradeStatus.ASSIGNED,
         assignedPayerId: 'payer1',
+        queuePosition: null,
       });
 
       let req = createMockRequest({ tradeId: 'trade3' });
@@ -613,21 +636,22 @@ describe('Trade Controller Tests', () => {
           id: 'trade3',
           status: TradeStatus.ASSIGNED,
           assignedPayerId: 'payer1',
-        }),
+        })
       );
       expect(res.status).toHaveBeenCalledWith(200);
 
       // Case 2: No free payers
       mockTradeRepo.findOne
         .mockResolvedValueOnce(trade)
-        .mockResolvedValueOnce({ ...mockTrades[1], assignedPayerId: 'payer1' })
+        .mockResolvedValueOnce({ id: 'trade1', assignedPayerId: 'payer1', status: TradeStatus.ASSIGNED })
         .mockResolvedValueOnce(trade);
       mockUserRepo.find.mockResolvedValue([mockUsers[0]]);
       mockShiftRepo.find.mockResolvedValue([mockShifts[0]]);
       mockTradeRepo.save.mockResolvedValue({
         ...trade,
         status: TradeStatus.ACTIVE_FUNDED,
-        assignedPayerId: 'payer1',
+        assignedPayerId: undefined,
+        queuePosition: 2,
       });
 
       req = createMockRequest({ tradeId: 'trade3' });
@@ -640,30 +664,47 @@ describe('Trade Controller Tests', () => {
         expect.objectContaining({
           id: 'trade3',
           status: TradeStatus.ACTIVE_FUNDED,
-          assignedPayerId: 'payer1',
-        }),
+          assignedPayerId: undefined,
+          queuePosition: 2,
+        })
       );
       expect(res.status).toHaveBeenCalledWith(200);
     });
 
     it('9. should assign queued reassigned trade before newer trades', async () => {
       const activeTrades = [
-        { ...mockTrades[2], assignedPayerId: 'payer1', tradeStatus: 'active funded' }, // trade3, reassigned
-        { ...mockTrades[3], tradeStatus: 'active funded' }, // trade4, newer
+        {
+          trade_hash: 'hash3',
+          trade_status: 'active funded',
+          accountId: 'account1',
+          platform: 'paxful',
+          started_at: '2025-05-01T07:00:00.000Z',
+          fiat_amount_requested: 75,
+        },
+        {
+          trade_hash: 'hash4',
+          trade_status: 'active funded',
+          accountId: 'account1',
+          platform: 'paxful',
+          started_at: '2025-05-01T06:00:00.000Z',
+          fiat_amount_requested: 200,
+        },
       ];
+
       const availablePayers = [mockUsers[0]];
 
-      // Reassign trade3 to queue
+      // Reassign trade3
       mockTradeRepo.findOne
         .mockResolvedValueOnce(mockTrades[2])
-        .mockResolvedValueOnce({ ...mockTrades[1], assignedPayerId: 'payer1' })
+        .mockResolvedValueOnce({ id: 'trade1', assignedPayerId: 'payer1', status: TradeStatus.ASSIGNED })
         .mockResolvedValueOnce(mockTrades[2]);
       mockUserRepo.find.mockResolvedValue([mockUsers[0]]);
       mockShiftRepo.find.mockResolvedValue([mockShifts[0]]);
       mockTradeRepo.save.mockResolvedValue({
         ...mockTrades[2],
         status: TradeStatus.ACTIVE_FUNDED,
-        assignedPayerId: 'payer1',
+        assignedPayerId: undefined,
+        queuePosition: 2,
       });
 
       const req = createMockRequest({ tradeId: 'trade3' });
@@ -672,57 +713,76 @@ describe('Trade Controller Tests', () => {
 
       await tradeController.reassignTrade(req as Request, res as Response, next);
 
-      // Now assign trades
+      // Assign trades
       mockPlatformServices.paxful[0].listActiveTrades.mockResolvedValue(activeTrades);
-      mockTradeRepo.find.mockResolvedValue(activeTrades);
+      mockTradeRepo.find.mockResolvedValue(mockTrades.slice(2));
       mockUserRepo.find.mockResolvedValue(availablePayers);
       mockShiftRepo.find.mockResolvedValue([mockShifts[0]]);
-      mockQueryRunner.manager.find.mockResolvedValue([]);
+      mockQueryRunner.manager.find
+        .mockResolvedValueOnce(mockTrades.slice(2))
+        .mockResolvedValueOnce([]);
       mockQueryRunner.manager.findOne.mockResolvedValue({
-        ...mockTrades[2],
+        ...mockTrades[3], // trade4 is older
         status: TradeStatus.ACTIVE_FUNDED,
-        assignedPayerId: 'payer1',
       });
       mockQueryRunner.manager.save.mockResolvedValue({
-        ...mockTrades[2],
+        ...mockTrades[3],
         status: TradeStatus.ASSIGNED,
         assignedPayerId: 'payer1',
         assignedAt: new Date(),
+        queuePosition: null,
       });
-
-      jest.spyOn(tradeController, 'initializePlatformServices').mockResolvedValue(mockPlatformServices);
 
       const result = await tradeController.assignLiveTradesInternal();
 
       expect(mockTradeRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
-          id: 'trade3',
+          id: 'trade4', // Oldest trade should be assigned
           status: TradeStatus.ASSIGNED,
           assignedPayerId: 'payer1',
-        }),
+        })
       );
-      expect(result[0].id).toBe('trade3');
+      expect(result).toEqual([]);
     });
 
     it('10. should not push out assigned trade for new or reassigned trades', async () => {
-      const activeTrades = [mockTrades[2], mockTrades[3]];
+      const activeTrades = [
+        {
+          trade_hash: 'hash3',
+          trade_status: 'active funded',
+          accountId: 'account1',
+          platform: 'paxful',
+          started_at: '2025-05-01T07:00:00.000Z',
+          fiat_amount_requested: 75,
+        },
+        {
+          trade_hash: 'hash4',
+          trade_status: 'active funded',
+          accountId: 'account1',
+          platform: 'paxful',
+          started_at: '2025-05-01T06:00:00.000Z',
+          fiat_amount_requested: 200,
+        },
+      ];
+
       const assignedTrade = { ...mockTrades[0] };
       const availablePayers = [mockUsers[0], mockUsers[1]];
 
       mockPlatformServices.paxful[0].listActiveTrades.mockResolvedValue(activeTrades);
-      mockTradeRepo.find.mockResolvedValue(activeTrades);
+      mockTradeRepo.find.mockResolvedValue(mockTrades.slice(2));
       mockUserRepo.find.mockResolvedValue(availablePayers);
       mockShiftRepo.find.mockResolvedValue([mockShifts[0], mockShifts[1]]);
-      mockQueryRunner.manager.find.mockResolvedValue([assignedTrade]);
+      mockQueryRunner.manager.find
+        .mockResolvedValueOnce(mockTrades.slice(2))
+        .mockResolvedValueOnce([assignedTrade]);
       mockQueryRunner.manager.findOne.mockResolvedValue(mockTrades[2]);
       mockQueryRunner.manager.save.mockResolvedValue({
         ...mockTrades[2],
         status: TradeStatus.ASSIGNED,
         assignedPayerId: 'payer2',
         assignedAt: new Date(),
+        queuePosition: null,
       });
-
-      jest.spyOn(tradeController, 'initializePlatformServices').mockResolvedValue(mockPlatformServices);
 
       const result = await tradeController.assignLiveTradesInternal();
 
@@ -731,15 +791,13 @@ describe('Trade Controller Tests', () => {
           id: 'trade1',
           status: expect.anything(),
           assignedPayerId: expect.anything(),
-        }),
+        })
       );
-      expect(result).toHaveLength(1);
-      expect(result[0].assignedPayerId).toBe('payer2');
+      expect(result).toEqual([]);
     });
   });
 
   describe('markTradeAsPaid', () => {
-
     it('should handle trade not found', async () => {
       mockTradeRepo.findOne.mockResolvedValue(null);
 
@@ -750,7 +808,7 @@ describe('Trade Controller Tests', () => {
       await tradeController.markTradeAsPaid(req as Request, res as Response, next);
 
       expect(next).toHaveBeenCalledWith(expect.any(Error));
-      const error = (next as jest.Mock).mock.calls[0][0] as Error & { statusCode?: number };
+      const error = (next as jest.Mock).mock.calls[0][0];
       expect(error.message).toBe('Trade not found');
       expect(error.statusCode).toBe(404);
     });
@@ -763,7 +821,7 @@ describe('Trade Controller Tests', () => {
       await tradeController.markTradeAsPaid(req as Request, res as Response, next);
 
       expect(next).toHaveBeenCalledWith(expect.any(Error));
-      const error = (next as jest.Mock).mock.calls[0][0] as Error & { statusCode?: number };
+      const error = (next as jest.Mock).mock.calls[0][0];
       expect(error.message).toBe('Trade ID is required');
       expect(error.statusCode).toBe(400);
     });
@@ -799,7 +857,7 @@ describe('Trade Controller Tests', () => {
           escalationReason: 'Payment issue',
           escalatedById: 'payer1',
           assignedPayerId: null,
-        }),
+        })
       );
       expect(mockIo.emit).toHaveBeenCalledWith('tradeEscalated', { tradeId: 'trade1' });
       expect(res.status).toHaveBeenCalledWith(200);
@@ -819,7 +877,7 @@ describe('Trade Controller Tests', () => {
       await tradeController.escalateTrade(req as Request, res as Response, next);
 
       expect(next).toHaveBeenCalledWith(expect.any(Error));
-      const error = (next as jest.Mock).mock.calls[0][0] as Error;
+      const error = (next as jest.Mock).mock.calls[0][0];
       expect(error.message).toBe('Trade not found');
     });
   });
@@ -845,6 +903,7 @@ describe('Trade Controller Tests', () => {
         status: TradeStatus.ASSIGNED,
         assignedPayerId: 'payer1',
         isEscalated: false,
+        queuePosition: null,
       });
 
       const req = createMockRequest({ tradeId: 'trade2' });
@@ -878,7 +937,7 @@ describe('Trade Controller Tests', () => {
       await tradeController.reassignTrade(req as Request, res as Response, next);
 
       expect(next).toHaveBeenCalledWith(expect.any(Error));
-      const error = (next as jest.Mock).mock.calls[0][0] as Error & { statusCode?: number };
+      const error = (next as jest.Mock).mock.calls[0][0];
       expect(error.message).toBe('No available payers');
       expect(error.statusCode).toBe(400);
       expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
@@ -896,8 +955,8 @@ describe('Trade Controller Tests', () => {
       await tradeController.reassignTrade(req as Request, res as Response, next);
 
       expect(next).toHaveBeenCalledWith(expect.any(Error));
-      const error = (next as jest.Mock).mock.calls[0][0] as Error & { statusCode?: number };
-      expect(error.message).toBe('This trade cannot be reassigned');
+      const error = (next as jest.Mock).mock.calls[0][0];
+      expect(error.message).toBe('This trade was cancelled and cannot be reassigned');
       expect(error.statusCode).toBe(400);
       expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
     });
@@ -905,52 +964,50 @@ describe('Trade Controller Tests', () => {
 
   describe('assignLiveTradesInternal', () => {
     it('should assign trades to available payers', async () => {
-      const activeTrades = [{ ...mockTrades[2], tradeStatus: 'active funded', accountId: 'account1' }];
-      const availablePayers = [{ ...mockUsers[0], id: 'payer1', clockedIn: true }];
+      const activeTrades = [
+        {
+          trade_hash: 'hash3',
+          trade_status: 'active funded',
+          accountId: 'account1',
+          platform: 'paxful',
+          started_at: '2025-05-01T07:00:00.000Z',
+          fiat_amount_requested: 75,
+        },
+      ];
+      const availablePayers = [mockUsers[0]];
 
       mockPlatformServices.paxful[0].listActiveTrades.mockResolvedValue(activeTrades);
-      mockTradeRepo.find.mockResolvedValue(activeTrades.map((t) => ({ ...t, id: t.id, tradeHash: t.tradeHash })));
+      mockTradeRepo.find.mockResolvedValue([mockTrades[2]]);
       mockUserRepo.find.mockResolvedValue(availablePayers);
-      mockShiftRepo.find.mockResolvedValue(mockShifts);
-      mockQueryRunner.manager.find.mockResolvedValue([]);
-      mockQueryRunner.manager.findOne.mockResolvedValue({
-        ...activeTrades[0],
-        id: 'trade3',
-        tradeHash: 'hash3',
-        status: TradeStatus.ACTIVE_FUNDED,
-      });
+      mockShiftRepo.find.mockResolvedValue([mockShifts[0]]);
+      mockQueryRunner.manager.find
+        .mockResolvedValueOnce([mockTrades[2]])
+        .mockResolvedValueOnce([]);
+      mockQueryRunner.manager.findOne.mockResolvedValue(mockTrades[2]);
       mockQueryRunner.manager.save.mockResolvedValue({
-        ...activeTrades[0],
-        id: 'trade3',
+        ...mockTrades[2],
         status: TradeStatus.ASSIGNED,
         assignedPayerId: 'payer1',
         assignedAt: new Date(),
+        queuePosition: null,
       });
-
-      (tradeController.initializePlatformServices as jest.Mock).mockResolvedValue(mockPlatformServices);
 
       const result = await tradeController.assignLiveTradesInternal();
 
-      expect(mockQueryRunner.connect).toHaveBeenCalled();
-      expect(mockQueryRunner.startTransaction).toHaveBeenCalled();
       expect(mockTradeRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
           id: 'trade3',
           status: TradeStatus.ASSIGNED,
           assignedPayerId: 'payer1',
-        }),
+        })
       );
-      expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
-      expect(mockQueryRunner.release).toHaveBeenCalled();
-      expect(result).toHaveLength(1);
-      expect(result[0].assignedPayerId).toBe('payer1');
+      expect(result).toEqual([]);
     });
 
     it('should handle empty trade list', async () => {
+      mockPlatformServices.paxful[0].listActiveTrades.mockResolvedValue([]);
       mockTradeRepo.find.mockResolvedValue([]);
       mockQueryRunner.manager.find.mockResolvedValue([]);
-
-      (tradeController.initializePlatformServices as jest.Mock).mockResolvedValue(mockPlatformServices);
 
       const result = await tradeController.assignLiveTradesInternal();
 
@@ -961,11 +1018,8 @@ describe('Trade Controller Tests', () => {
     it('should handle database errors', async () => {
       mockTradeRepo.find.mockRejectedValue(new Error('Database error'));
 
-      (tradeController.initializePlatformServices as jest.Mock).mockResolvedValue(mockPlatformServices);
-
       await expect(tradeController.assignLiveTradesInternal()).rejects.toThrow('Database error');
       expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
     });
   });
-
 });

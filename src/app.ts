@@ -17,6 +17,7 @@ import notificationRoutes from "./routes/notificationRoutes";
 import shiftRoutes from "./routes/shiftRoutes";
 import accountRoutes from "./routes/accountRoutes";
 import { reloadFreshBanks } from "./controllers/bankController";
+import { pollAndAssignLiveTrades, processTradeQueue } from "./controllers/tradeController";
 const app = express();
 
 // CORS Configuration
@@ -44,6 +45,36 @@ app.use(express.urlencoded({ extended: true }));
 //   .start();
 
 // initializeShiftCrons();
+
+if (process.env.NODE_ENV !== 'test') {
+  // poll & assign every 5 seconds
+  cron.schedule(
+    '*/5 * * * * *',
+    async () => {
+      console.log('🔄 [Cron] pollAndAssignLiveTrades @', new Date().toISOString());
+      try {
+        await pollAndAssignLiveTrades();
+      } catch (e) {
+        console.error('[Cron] pollAndAssignLiveTrades error:', e);
+      }
+    },
+    { scheduled: true, timezone: 'Africa/Lagos' }
+  );
+
+  // process the queue every 5 seconds
+  // cron.schedule(
+  //   '*/5 * * * * *',
+  //   async () => {
+  //     console.log('🔄 [Cron] processTradeQueue @', new Date().toISOString());
+  //     try {
+  //       await processTradeQueue();
+  //     } catch (e) {
+  //       console.error('[Cron] processTradeQueue error:', e);
+  //     }
+  //   },
+  //   { scheduled: true, timezone: 'Africa/Lagos' }
+  // );
+}
 
 cron.schedule(
   "0 1 * * *",

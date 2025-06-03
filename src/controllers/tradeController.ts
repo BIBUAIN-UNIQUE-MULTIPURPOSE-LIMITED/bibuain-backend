@@ -109,7 +109,6 @@ const checkDbConnection = async (): Promise<boolean> => {
   }
 };
 
-const processingLock = new Map<string, boolean>();
 const queueProcessingLock = new Set<string>();
 
 export const upsertLiveTrades = async (liveTrades: any[]) => {
@@ -191,6 +190,16 @@ export const upsertLiveTrades = async (liveTrades: any[]) => {
           newStatus === TradeStatus.DISPUTED ||
           newStatus === TradeStatus.PAID
         )) {
+          // Emit specifically to the assigned payer
+          if (existing.assignedPayerId) {
+            io.to(existing.assignedPayerId).emit("tradeCompleted", {
+              tradeId: existing.id,
+              status: newStatus,
+              message: `Your trade has been ${newStatus.toLowerCase()}`
+            });
+            
+            console.log(`Notified payer ${existing.assignedPayerId} of trade completion: ${existing.id}`);
+          }
           // Use the emitTradeStatusChange function if available
           if (typeof emitTradeStatusChange === 'function') {
             emitTradeStatusChange(existing.id, newStatus, existing.assignedPayerId ?? undefined);
@@ -310,13 +319,16 @@ const syncCancelledTrades = async (): Promise<void> => {
 
         if (assignedPayerId) {
           cancelledTradeIds.push(tradeId);
+          
+          // Send specific notification to the payer
+          io.to(assignedPayerId).emit("tradeCancelled", {
+            tradeId,
+            status: TradeStatus.CANCELLED,
+            message: "Your assigned trade was cancelled"
+          });
+
           if (typeof emitTradeStatusChange === 'function') {
             emitTradeStatusChange(tradeId, TradeStatus.CANCELLED, assignedPayerId);
-          } else {
-            io.to(assignedPayerId).emit("tradeStatusChanged", {
-              tradeId,
-              status: TradeStatus.CANCELLED,
-            });
           }
         }
       }
@@ -332,7 +344,7 @@ const syncCancelledTrades = async (): Promise<void> => {
 };
 
 // New function to manage the trade queue properly
-const processTradeQueue = async (): Promise<void> => {
+export const processTradeQueue = async (): Promise<void> => {
   const lockKey = 'queue_processing';
   
   if (queueProcessingLock.has(lockKey)) {
@@ -690,7 +702,7 @@ let isProcessing = false;
 
 let lastQueueProcessTime = 0;
 
-const pollAndAssignLiveTrades = async () => {
+export const pollAndAssignLiveTrades = async () => {
   if (isProcessing) return;
   isProcessing = true;
   
@@ -730,10 +742,6 @@ const pollAndAssignLiveTrades = async () => {
 // Add property to track last queue processing
 (pollAndAssignLiveTrades as any).lastQueueProcess = 0;
 
-if (process.env.NODE_ENV !== 'test') {
-  setInterval(pollAndAssignLiveTrades, 2000); // Main sync every 2 seconds
-  setInterval(processTradeQueue, 5000); // Queue processing every 5 seconds
-}
 
 export const getAvailablePayers = async (): Promise<User[]> => {
   const userRepository = dbConnect.getRepository(User);
@@ -892,8 +900,6 @@ export const escalateTrade = async (
     trade.queuedAt = null;
     trade.updatedAt = new Date();
     await tradeRepo.save(trade);
-
-    io?.emit("tradeEscalated", { tradeId: trade.id });
 
     // Notify CC
     const ccAgent = await dbConnect.getRepository(User).findOne({ 
@@ -3827,7 +3833,7 @@ export const emitTradeStatusChange = (tradeId: string, status: string, assignedP
   const io: Server = app.get("io");
 
   if (!io || typeof io.to !== 'function') {
-    // console.warn(`Socket.IO not available for emitting tradeStatusChanged for trade ${tradeId}`);
+    console.warn(`Socket.IO not available for emitting tradeStatusChanged for trade ${tradeId}`);
     return;
   }
 
@@ -3843,6 +3849,9 @@ export const emitTradeStatusChange = (tradeId: string, status: string, assignedP
       tradeId,
       status,
     });
+    console.log ("emit trade to payer.")
+  } else {
+    console.error("Can't emit status to payer")
   }
 
   console.log(`Emitted tradeStatusChanged for ${tradeId}: ${status}`);
