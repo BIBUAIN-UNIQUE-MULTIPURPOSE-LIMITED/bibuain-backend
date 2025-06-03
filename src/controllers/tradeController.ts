@@ -896,7 +896,7 @@ export const escalateTrade = async (
     trade.escalatedById = escalatedById;
     trade.assignedPayerId = null;
     trade.assignedAt = null;
-    trade.queuePosition = null; // Remove from queue
+    trade.queuePosition = null; 
     trade.queuedAt = null;
     trade.updatedAt = new Date();
     await tradeRepo.save(trade);
@@ -3596,9 +3596,10 @@ export const getEscalatedTrades = async (req: Request, res: Response, next: Next
     const tradeRepo = dbConnect.getRepository(Trade);
 
     const escalatedTrades = await tradeRepo.find({
-      where: { status: TradeStatus.ESCALATED },
-      relations: ['assignedPayer', 'escalatedBy'],
-      order: { updatedAt: 'DESC' }
+      where: { 
+        isEscalated: true
+      },
+      relations: ['assignedPayer', 'escalatedBy']
     });
 
     return res.status(200).json({
