@@ -169,12 +169,11 @@ export const upsertLiveTrades = async (liveTrades: any[]) => {
     if (existing) {
       // Check if status is changing to emit proper event
       const statusChanged = existing.status !== newStatus;
-      const wasAssigned = existing.assignedPayerId !== undefined;
 
       // Update the trade
       await tradeRepo.update(existing.id, mapped);
 
-      // If status changed to a terminal state, emit event and process queue
+      // If status changed, emit event only (no queue processing here)
       if (statusChanged) {
         // Emit event for status change
         io?.emit("tradeStatusChanged", {
@@ -182,8 +181,8 @@ export const upsertLiveTrades = async (liveTrades: any[]) => {
           status: newStatus,
         });
 
-        // For previously assigned trades that are now terminal, notify and process queue
-        if (wasAssigned && (
+        // For previously assigned trades that are now terminal, notify only
+        if (existing.assignedPayerId && (
           newStatus === TradeStatus.CANCELLED ||
           newStatus === TradeStatus.COMPLETED ||
           newStatus === TradeStatus.SUCCESSFUL ||
@@ -191,27 +190,23 @@ export const upsertLiveTrades = async (liveTrades: any[]) => {
           newStatus === TradeStatus.PAID
         )) {
           // Emit specifically to the assigned payer
-          if (existing.assignedPayerId) {
-            io.to(existing.assignedPayerId).emit("tradeCompleted", {
-              tradeId: existing.id,
-              status: newStatus,
-              message: `Your trade has been ${newStatus.toLowerCase()}`
-            });
-            
-            console.log(`Notified payer ${existing.assignedPayerId} of trade completion: ${existing.id}`);
-          }
+          io.to(existing.assignedPayerId).emit("tradeCompleted", {
+            tradeId: existing.id,
+            status: newStatus,
+            message: `Your trade has been ${newStatus.toLowerCase()}`
+          });
+          
+          console.log(`Notified payer ${existing.assignedPayerId} of trade completion: ${existing.id}`);
+          
           // Use the emitTradeStatusChange function if available
           if (typeof emitTradeStatusChange === 'function') {
             emitTradeStatusChange(existing.id, newStatus, existing.assignedPayerId ?? undefined);
           }
           console.log(`Status changed for assigned trade ${existing.id}: ${existing.status} -> ${newStatus}`);
-          
-          // Process queue after trade completion
-          setImmediate(() => processTradeQueue());
         }
       }
     } else {
-      // For new trades, set initial queue tracking
+      // For new trades, set initial queue tracking for ACTIVE_FUNDED trades
       if (mapped.status === TradeStatus.ACTIVE_FUNDED) {
         mapped.queuedAt = new Date();
       }
@@ -287,8 +282,6 @@ const syncCancelledTrades = async (): Promise<void> => {
       ],
     });
 
-    const cancelledTradeIds: string[] = [];
-
     for (const t of stale) {
       if (!liveHashes.has(t.tradeHash)) {
         const assignedPayerId = t.assignedPayerId;
@@ -318,8 +311,6 @@ const syncCancelledTrades = async (): Promise<void> => {
         }
 
         if (assignedPayerId) {
-          cancelledTradeIds.push(tradeId);
-          
           // Send specific notification to the payer
           io.to(assignedPayerId).emit("tradeCancelled", {
             tradeId,
@@ -332,11 +323,6 @@ const syncCancelledTrades = async (): Promise<void> => {
           }
         }
       }
-    }
-
-    // Process queue after cancellations to reassign waiting trades
-    if (cancelledTradeIds.length > 0) {
-      setImmediate(() => processTradeQueue());
     }
   } catch (error) {
     console.error('Error in syncCancelledTrades:', error);
@@ -355,37 +341,39 @@ export const processTradeQueue = async (): Promise<void> => {
   queueProcessingLock.add(lockKey);
   
   try {
-    console.log('Processing trade queue...');
+    console.log('🔄 Processing trade queue...');
     
     const queryRunner = dbConnect.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      // Get all queued trades in proper FIFO order
+      // Get all queued trades in proper FIFO order (platformCreatedAt is key for order)
       const queuedTrades = await queryRunner.manager.find(Trade, {
         where: { 
           status: TradeStatus.ACTIVE_FUNDED,
           isEscalated: false 
         },
         order: { 
-          platformCreatedAt: 'ASC',  // Oldest first - this is key!
-          createdAt: 'ASC'           // Secondary sort by creation time
+          platformCreatedAt: 'ASC',  // This ensures FIFO based on when trade was created on platform
+          createdAt: 'ASC'           // Secondary sort by DB creation time
         },
         lock: { mode: 'pessimistic_write' }
       });
 
       if (queuedTrades.length === 0) {
         await queryRunner.commitTransaction();
-        console.log('No trades in queue');
+        console.log('📭 No trades in queue');
         return;
       }
 
-      // Update queue positions for all queued trades
+      // Update queue positions for all queued trades to maintain order
       for (let i = 0; i < queuedTrades.length; i++) {
         const trade = queuedTrades[i];
-        if (trade.queuePosition !== i + 1) {
-          trade.queuePosition = i + 1;
+        const newPosition = i + 1;
+        
+        if (trade.queuePosition !== newPosition) {
+          trade.queuePosition = newPosition;
           if (!trade.queuedAt) {
             trade.queuedAt = new Date();
           }
@@ -399,7 +387,7 @@ export const processTradeQueue = async (): Promise<void> => {
       
       if (availablePayers.length === 0) {
         await queryRunner.commitTransaction();
-        console.log('No available payers for queue processing');
+        console.log('👥 No available payers for queue processing');
         return;
       }
 
@@ -415,14 +403,14 @@ export const processTradeQueue = async (): Promise<void> => {
       const busyPayerIds = new Set(busyPayers.map(t => t.assignedPayerId!));
       const freePayers = availablePayers.filter(p => !busyPayerIds.has(p.id));
 
-      console.log(`Queue processing: ${queuedTrades.length} queued trades, ${freePayers.length} free payers`);
+      console.log(`📊 Queue status: ${queuedTrades.length} queued trades, ${freePayers.length} free payers`);
 
       let assignedCount = 0;
       
-      // Assign trades to free payers in FIFO order
+      // Assign trades to free payers in strict FIFO order
       for (let i = 0; i < Math.min(queuedTrades.length, freePayers.length); i++) {
-        const trade = queuedTrades[i];
-        const payer = freePayers[i];
+        const trade = queuedTrades[i]; // Take trades in order (first in, first assigned)
+        const payer = freePayers[i];   // Assign to payers in order they became available
 
         // Double-check the trade is still available for assignment
         const freshTrade = await queryRunner.manager.findOne(Trade, {
@@ -431,7 +419,7 @@ export const processTradeQueue = async (): Promise<void> => {
         });
 
         if (!freshTrade || freshTrade.status !== TradeStatus.ACTIVE_FUNDED) {
-          console.log(`Trade ${trade.tradeHash} no longer available for assignment`);
+          console.log(`⚠️ Trade ${trade.tradeHash} no longer available for assignment`);
           continue;
         }
 
@@ -444,7 +432,7 @@ export const processTradeQueue = async (): Promise<void> => {
         await queryRunner.manager.save(freshTrade);
         assignedCount++;
 
-        console.log(`Queue: Assigned trade ${freshTrade.tradeHash} to payer ${payer.id} (${payer.fullName})`);
+        console.log(`✅ Queue: Assigned trade ${freshTrade.tradeHash} to payer ${payer.id} (${payer.fullName}) - was position ${i + 1}`);
 
         // Emit assignment event
         io?.emit("tradeAssigned", {
@@ -457,7 +445,9 @@ export const processTradeQueue = async (): Promise<void> => {
       await queryRunner.commitTransaction();
       
       if (assignedCount > 0) {
-        console.log(`Queue processing complete: ${assignedCount} trades assigned`);
+        console.log(`🎯 Queue processing complete: ${assignedCount} trades assigned`);
+      } else {
+        console.log('⏳ Queue processing complete: no assignments made');
       }
 
       // Alert for long-waiting trades
@@ -506,27 +496,25 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
   await queryRunner.startTransaction();
 
   try {
-    // 0) Cancel any stale trades no longer active on platform
+    // 1) Cancel any stale trades no longer active on platform
     await syncCancelledTrades();
 
-    // 1) Fetch all "active funded" trades from platforms and sync to DB
+    // 2) Fetch all "active funded" trades from platforms and sync to DB
     const liveTrades = await aggregateLiveTrades();
     
     if (liveTrades.length === 0) {
       await queryRunner.commitTransaction();
-      // Still process existing queue even if no new trades
-      setImmediate(() => processTradeQueue());
       return [];
     }
 
-    // 2) Load existing DB entries for these trades
+    // 3) Load existing DB entries for these trades
     const hashes = liveTrades.map(t => t.trade_hash);
     const existingTrades = await queryRunner.manager.find(Trade, {
       where: { tradeHash: In(hashes) }
     });
     const existingMap = new Map(existingTrades.map(t => [t.tradeHash, t]));
 
-    // 3) Normalize and persist immediate status changes
+    // 4) Process status changes and queue new trades
     for (const td of liveTrades) {
       const lower = td.trade_status.toLowerCase();
       const existing = existingMap.get(td.trade_hash);
@@ -544,7 +532,7 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
           continue;
         }
 
-        // Map platform statuses and handle queue management
+        // Map platform statuses
         if (lower === 'active funded') {
           if (existing.status !== TradeStatus.ACTIVE_FUNDED) {
             existing.status = TradeStatus.ACTIVE_FUNDED;
@@ -559,7 +547,6 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
           }
         } else if (lower === 'paid' || lower === 'completed') {
           if (existing.status !== TradeStatus.COMPLETED) {
-            const wasAssigned = existing.assignedPayerId !== undefined;
             existing.status = TradeStatus.COMPLETED;
             existing.tradeStatus = td.trade_status;
             existing.assignedPayerId = undefined;
@@ -572,15 +559,9 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
               tradeId: existing.id,
               status: existing.status,
             });
-            
-            if (wasAssigned) {
-              // Trigger queue processing after completion
-              setImmediate(() => processTradeQueue());
-            }
           }
         } else if (lower === 'successful') {
           if (existing.status !== TradeStatus.SUCCESSFUL) {
-            const wasAssigned = existing.assignedPayerId !== undefined;
             existing.status = TradeStatus.SUCCESSFUL;
             existing.tradeStatus = td.trade_status;
             existing.assignedPayerId = undefined;
@@ -593,14 +574,9 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
               tradeId: existing.id,
               status: existing.status,
             });
-            
-            if (wasAssigned) {
-              setImmediate(() => processTradeQueue());
-            }
           }
         } else if (['cancelled', 'expired', 'disputed'].includes(lower)) {
           if (existing.status !== TradeStatus.CANCELLED) {
-            const wasAssigned = existing.assignedPayerId !== undefined;
             existing.status = TradeStatus.CANCELLED;
             existing.tradeStatus = td.trade_status;
             existing.assignedPayerId = undefined;
@@ -612,19 +588,12 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
               tradeId: existing.id,
               status: existing.status,
             });
-            
-            if (wasAssigned) {
-              setImmediate(() => processTradeQueue());
-            }
           }
         }
       }
     }
 
     await queryRunner.commitTransaction();
-    
-    // Process the queue after all updates
-    setImmediate(() => processTradeQueue());
     
     return [];
   } catch (err) {
@@ -633,6 +602,38 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
     throw err;
   } finally {
     await queryRunner.release();
+  }
+};
+
+// Modified pollAndAssignLiveTrades - now only handles polling
+export const pollAndAssignLiveTrades = async () => {
+  if (isProcessing) return;
+  isProcessing = true;
+  
+  try {
+    const isConnected = await checkDbConnection();
+    if (!isConnected) {
+      return;
+    }
+
+    // Only poll and sync trades to database/queue - no assignment processing
+    await assignLiveTradesInternal();
+    console.log('✅ Poll complete - trades synced to queue');
+
+  } catch (error: unknown) {
+    console.error('pollAndAssignLiveTrades error:', error);
+
+    if (error instanceof Error) {
+      if (error.message.includes('not Connected')) {
+        try {
+          await dbConnect.connect();
+        } catch (reconnectErr) {
+          console.error('Failed to reconnect:', reconnectErr);
+        }
+      }
+    }
+  } finally {
+    isProcessing = false;
   }
 };
 
@@ -701,43 +702,6 @@ export const getTradeQueueStatus = async (req: Request, res: Response, next: Nex
 let isProcessing = false;
 
 let lastQueueProcessTime = 0;
-
-export const pollAndAssignLiveTrades = async () => {
-  if (isProcessing) return;
-  isProcessing = true;
-  
-  try {
-    const isConnected = await checkDbConnection();
-    if (!isConnected) {
-      return;
-    }
-
-    // Main sync process
-    await assignLiveTradesInternal();
-    
-    // Also process queue every few cycles to ensure no trades get stuck
-    const now = Date.now();
-    if (!lastQueueProcessTime || (now - lastQueueProcessTime) > 10000) {
-      await processTradeQueue();
-      lastQueueProcessTime = now;
-    }
-
-  } catch (error: unknown) {
-    console.error('pollAndAssignLiveTrades error:', error);
-
-    if (error instanceof Error) {
-      if (error.message.includes('not Connected')) {
-        try {
-          await dbConnect.connect();
-        } catch (reconnectErr) {
-          console.error('Failed to reconnect:', reconnectErr);
-        }
-      }
-    }
-  } finally {
-    isProcessing = false;
-  }
-};
 
 // Add property to track last queue processing
 (pollAndAssignLiveTrades as any).lastQueueProcess = 0;

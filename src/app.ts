@@ -49,7 +49,7 @@ app.use(express.urlencoded({ extended: true }));
 if (process.env.NODE_ENV !== 'test') {
   // poll & assign every 5 seconds
   cron.schedule(
-    '*/5 * * * * *',
+    '*/6 * * * * *',
     async () => {
       console.log('🔄 [Cron] pollAndAssignLiveTrades @', new Date().toISOString());
       try {
@@ -62,18 +62,18 @@ if (process.env.NODE_ENV !== 'test') {
   );
 
   // process the queue every 5 seconds
-  // cron.schedule(
-  //   '*/5 * * * * *',
-  //   async () => {
-  //     console.log('🔄 [Cron] processTradeQueue @', new Date().toISOString());
-  //     try {
-  //       await processTradeQueue();
-  //     } catch (e) {
-  //       console.error('[Cron] processTradeQueue error:', e);
-  //     }
-  //   },
-  //   { scheduled: true, timezone: 'Africa/Lagos' }
-  // );
+  cron.schedule(
+    '*/5 * * * * *',
+    async () => {
+      console.log('🔄 [Cron] processTradeQueue @', new Date().toISOString());
+      try {
+        await processTradeQueue();
+      } catch (e) {
+        console.error('[Cron] processTradeQueue error:', e);
+      }
+    },
+    { scheduled: true, timezone: 'Africa/Lagos' }
+  );
 }
 
 cron.schedule(
