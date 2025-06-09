@@ -37,6 +37,7 @@ import {
   activateOfferController,
   getCCstats,
   getPlatformCostPrice
+  
 } from "../controllers/tradeController";
 import { authenticate, roleAuth } from "../middlewares/authenticate";
 import { User, UserType } from "../models/user";
