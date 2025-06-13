@@ -1631,12 +1631,10 @@ export const getOfferDetailsController = async (
   try {
     const { offer_hash } = req.body;
     if (!offer_hash) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Missing offer_hash in request body",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Missing offer_hash in request body",
+      });
     }
 
     const services = await initializePlatformServices();
@@ -1675,12 +1673,10 @@ export const activateOfferController = async (
   try {
     const { offer_hash, platform } = req.body;
     if (!offer_hash) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Missing offer_hash in request body",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Missing offer_hash in request body",
+      });
     }
 
     if (!platform) {
@@ -1719,12 +1715,10 @@ export const activateOfferController = async (
       );
       result = await noonesService.activateOffer(offer_hash);
     } else {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Invalid platform. Use 'paxful' or 'noones'",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid platform. Use 'paxful' or 'noones'",
+      });
     }
 
     return res.status(200).json({

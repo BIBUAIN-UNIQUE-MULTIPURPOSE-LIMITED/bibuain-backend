@@ -1,4 +1,5 @@
 # Getting started to contribute
+
 ```
 git clone <github url>
 
@@ -9,20 +10,30 @@ npm install
 ```
 
 # For database
+
 To generate migration
-```npm run migration:generate```
+`npm run migration:generate`
 
 Apply generation migration, run this command
-```npm run migration:run```
+`npm run migration:run`
 
-To revert migration (if applicable, *please be careful when reverting, only revert when needed*)
-```npm run typeorm -- migration:revert -d src/config/database.ts```
+To revert migration (if applicable, _please be careful when reverting, only revert when needed_)
+`npm run typeorm -- migration:revert -d src/config/database.ts`
 
 # To run server
-```npm run dev```
+
+`npm run dev`
 
 # For code formatting
-```npm run format```
+
+`npm run format`
 
 # To check lint error
-``` npm run lint ```
+
+<<<<<<< HEAD
+`npm run lint`
+=======
+
+`npm run lint`
+
+> > > > > > > 4084e30 (chore: install package.json to match well with package-lock.json)

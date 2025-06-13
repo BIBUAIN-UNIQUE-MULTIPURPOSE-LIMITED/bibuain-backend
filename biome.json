@@ -1,18 +1,18 @@
 {
-    "$schema": "https://biomejs.dev/schemas/1.5.3/schema.json",
-    "organizeImports": {
-      "enabled": false
-    },
-    "linter": {
-      "enabled": true,
-      "rules": {
-        "suspicious": {
-          "noExplicitAny": "off", 
-          "noGlobalIsNan": "off" 
-        },
-        "style": {
-          "useImportType": "off",
-          "noNonNullAssertion": "off"
+  "$schema": "https://biomejs.dev/schemas/1.5.3/schema.json",
+  "organizeImports": {
+    "enabled": false
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "suspicious": {
+        "noExplicitAny": "off",
+        "noGlobalIsNan": "off"
+      },
+      "style": {
+        "useImportType": "off",
+        "noNonNullAssertion": "off"
       }
     }
   }

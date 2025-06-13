@@ -15,7 +15,7 @@
     "test:coverage": "jest --coverage",
     "migration:generate": "npm run typeorm -- migration:generate -d src/config/database.ts",
     "migration:run": "npm run typeorm -- migration:run -d src/config/database.ts",
-    "format": "prettier --write \"src/**/*.{ts,js,json,md}\""
+    "format": "prettier --write . && git add ."
   },
   "keywords": [],
   "author": "",

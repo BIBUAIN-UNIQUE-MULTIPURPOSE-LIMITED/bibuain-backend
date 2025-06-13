@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, jest } from '@jest/globals';
+import { afterAll, afterEach, beforeAll, jest } from "@jest/globals";
 
 // Define types for platform services
 interface PlatformService {
@@ -39,7 +39,7 @@ const mockDbConnect = {
   createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner),
   getRepository: jest.fn(),
   destroy: jest.fn().mockResolvedValue(undefined as never),
-  query: jest.fn().mockResolvedValue([{"1": 1}] as never),
+  query: jest.fn().mockResolvedValue([{ "1": 1 }] as never),
 };
 
 // Mock Socket.IO
@@ -52,12 +52,14 @@ const mockIo = {
 
 // Mock platform services
 const mockPlatformServices: PlatformServices = {
-  paxful: [{
-    markTradeAsPaid: jest.fn().mockResolvedValue(true as never),
-    listActiveTrades: jest.fn().mockResolvedValue([] as never),
-    accountId: 'account1',
-    label: 'paxful-account',
-  }],
+  paxful: [
+    {
+      markTradeAsPaid: jest.fn().mockResolvedValue(true as never),
+      listActiveTrades: jest.fn().mockResolvedValue([] as never),
+      accountId: "account1",
+      label: "paxful-account",
+    },
+  ],
   noones: [],
   binance: [],
 };
@@ -66,99 +68,99 @@ const mockPlatformServices: PlatformServices = {
 export { mockDbConnect, mockQueryRunner, mockIo, mockPlatformServices };
 
 // Mock the database module
-jest.mock('../src/config/database', () => ({
+jest.mock("../src/config/database", () => ({
   __esModule: true,
   default: mockDbConnect,
 }));
 
 // Mock Socket.IO server
-jest.mock('../src/server', () => ({
+jest.mock("../src/server", () => ({
   io: mockIo,
 }));
 
 // Mock entity classes - UPDATED TO INCLUDE TradePlatform
-jest.mock('../src/models/trades', () => ({
+jest.mock("../src/models/trades", () => ({
   Trade: class Trade {
     constructor() {}
   },
   TradeStatus: {
-    ACTIVE_FUNDED: 'ACTIVE_FUNDED',
-    ASSIGNED: 'ASSIGNED',
-    ESCALATED: 'ESCALATED',
-    CANCELLED: 'CANCELLED',
-    EXPIRED: 'EXPIRED',
-    SUCCESSFUL: 'SUCCESSFUL',
-    PAID: 'PAID',
-    COMPLETED: 'COMPLETED',
-    DISPUTED: 'DISPUTED',
+    ACTIVE_FUNDED: "ACTIVE_FUNDED",
+    ASSIGNED: "ASSIGNED",
+    ESCALATED: "ESCALATED",
+    CANCELLED: "CANCELLED",
+    EXPIRED: "EXPIRED",
+    SUCCESSFUL: "SUCCESSFUL",
+    PAID: "PAID",
+    COMPLETED: "COMPLETED",
+    DISPUTED: "DISPUTED",
   },
   TradePlatform: {
-    PAXFUL: 'paxful',
-    NOONES: 'noones',
-    BINANCE: 'binance',
+    PAXFUL: "paxful",
+    NOONES: "noones",
+    BINANCE: "binance",
   },
 }));
 
-jest.mock('../src/models/user', () => ({
+jest.mock("../src/models/user", () => ({
   User: class User {
     constructor() {}
   },
   UserType: {
-    ADMIN: 'admin',
-    PAYER: 'payer',
-    RATER: 'rater',
-    CEO: 'ceo',
-    CC: 'customer-support',
+    ADMIN: "admin",
+    PAYER: "payer",
+    RATER: "rater",
+    CEO: "ceo",
+    CC: "customer-support",
   },
 }));
 
-jest.mock('../src/models/shift', () => ({
+jest.mock("../src/models/shift", () => ({
   Shift: class Shift {
     constructor() {}
   },
   ShiftStatus: {
-    ACTIVE: 'active',
-    ON_BREAK: 'on_break',
-    PENDING_APPROVAL: 'pending_approval',
-    APPROVED: 'approved',
-    REJECTED: 'rejected',
-    ENDED: 'ended',
-    FORCE_CLOSED: 'force_closed',
+    ACTIVE: "active",
+    ON_BREAK: "on_break",
+    PENDING_APPROVAL: "pending_approval",
+    APPROVED: "approved",
+    REJECTED: "rejected",
+    ENDED: "ended",
+    FORCE_CLOSED: "force_closed",
   },
 }));
 
-jest.mock('../src/models/accounts', () => ({
+jest.mock("../src/models/accounts", () => ({
   Account: class Account {
     constructor() {}
   },
   ForexPlatform: {
-    PAXFUL: 'paxful',
-    NOONES: 'noones',
-    BINANCE: 'binance',
+    PAXFUL: "paxful",
+    NOONES: "noones",
+    BINANCE: "binance",
   },
 }));
 
-jest.mock('../src/models/bank', () => ({
+jest.mock("../src/models/bank", () => ({
   Bank: class Bank {
     constructor() {}
   },
   BankTag: {
-    PRIMARY: 'primary',
-    ROLLOVER: 'rollover',
+    PRIMARY: "primary",
+    ROLLOVER: "rollover",
   },
 }));
 
-jest.mock('../src/models/notifications', () => ({
+jest.mock("../src/models/notifications", () => ({
   NotificationType: {
-    SYSTEM: 'system',
+    SYSTEM: "system",
   },
   PriorityLevel: {
-    HIGH: 'high',
+    HIGH: "high",
   },
 }));
 
 // Mock platform services
-jest.mock('../src/config/paxful', () => ({
+jest.mock("../src/config/paxful", () => ({
   PaxfulService: class PaxfulService {
     markTradeAsPaid = jest.fn().mockResolvedValue(true as never);
     listActiveTrades = jest.fn().mockResolvedValue([] as never);
@@ -170,36 +172,36 @@ jest.mock('../src/config/paxful', () => ({
   },
 }));
 
-jest.mock('../src/config/noones', () => ({
+jest.mock("../src/config/noones", () => ({
   NoonesService: class NoonesService {
     markTradeAsPaid = jest.fn().mockResolvedValue(true as never);
     listActiveTrades = jest.fn().mockResolvedValue([] as never);
   },
 }));
 
-jest.mock('../src/config/binance', () => ({
+jest.mock("../src/config/binance", () => ({
   BinanceService: class BinanceService {},
 }));
 
 // Mock notification controller
-jest.mock('../src/controllers/notificationController', () => ({
-  createNotification: jest.fn().mockResolvedValue(undefined  as never),
+jest.mock("../src/controllers/notificationController", () => ({
+  createNotification: jest.fn().mockResolvedValue(undefined as never),
 }));
 
 // Mock error handler
-jest.mock('../src/utils/errorHandler', () => ({
+jest.mock("../src/utils/errorHandler", () => ({
   __esModule: true,
   default: class ErrorHandler extends Error {
     constructor(message: string, statusCode: number) {
       super(message);
-      this.name = 'ErrorHandler';
-      Object.defineProperty(this, 'statusCode', { value: statusCode });
+      this.name = "ErrorHandler";
+      Object.defineProperty(this, "statusCode", { value: statusCode });
     }
   },
 }));
 
 // Mock the app
-jest.mock('../src/app', () => {
+jest.mock("../src/app", () => {
   const mockApp = {
     get: jest.fn().mockReturnValue(mockIo),
     set: jest.fn(),
@@ -208,21 +210,21 @@ jest.mock('../src/app', () => {
 });
 
 // Set test environment variables
-process.env.NODE_ENV = 'test';
-process.env.DB_HOST = 'localhost';
-process.env.DB_PORT = '5432';
-process.env.DB_USERNAME = 'test';
-process.env.DB_PASSWORD = 'test';
-process.env.DB_DATABASE = 'test_db';
+process.env.NODE_ENV = "test";
+process.env.DB_HOST = "localhost";
+process.env.DB_PORT = "5432";
+process.env.DB_USERNAME = "test";
+process.env.DB_PASSWORD = "test";
+process.env.DB_DATABASE = "test_db";
 
 // Global test setup
 beforeAll(() => {
   jest.useFakeTimers();
-  jest.spyOn(console, 'log').mockImplementation(() => {});
-  jest.spyOn(console, 'error').mockImplementation(() => {});
-  jest.spyOn(console, 'warn').mockImplementation(() => {});
-  jest.spyOn(console, 'info').mockImplementation(() => {});
-  jest.spyOn(console, 'debug').mockImplementation(() => {});
+  jest.spyOn(console, "log").mockImplementation(() => {});
+  jest.spyOn(console, "error").mockImplementation(() => {});
+  jest.spyOn(console, "warn").mockImplementation(() => {});
+  jest.spyOn(console, "info").mockImplementation(() => {});
+  jest.spyOn(console, "debug").mockImplementation(() => {});
   jest.clearAllTimers();
 });
 

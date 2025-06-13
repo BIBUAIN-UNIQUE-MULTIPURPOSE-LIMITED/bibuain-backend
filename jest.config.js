@@ -1,21 +1,18 @@
 module.exports = {
-  preset: 'ts-jest',
-  testEnvironment: 'node',
-  setupFilesAfterEnv: ['./tests/setup.ts'],
-  roots: ['<rootDir>/src', '<rootDir>/tests'],
+  preset: "ts-jest",
+  testEnvironment: "node",
+  setupFilesAfterEnv: ["./tests/setup.ts"],
+  roots: ["<rootDir>/src", "<rootDir>/tests"],
   testMatch: [
-    '**/__tests__/**/*.+(ts|tsx|js)',
-    '**/?(*.)+(spec|test).+(ts|tsx|js)'
+    "**/__tests__/**/*.+(ts|tsx|js)",
+    "**/?(*.)+(spec|test).+(ts|tsx|js)",
   ],
   transform: {
-    '^.+\\.(ts|tsx)$': 'ts-jest'
+    "^.+\\.(ts|tsx)$": "ts-jest",
   },
-  collectCoverageFrom: [
-    'src/**/*.{ts,tsx}',
-    '!src/**/*.d.ts'
-  ],
+  collectCoverageFrom: ["src/**/*.{ts,tsx}", "!src/**/*.d.ts"],
   moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/$1'
+    "^@/(.*)$": "<rootDir>/src/$1",
   },
   testTimeout: 10000,
   detectOpenHandles: true,
@@ -24,5 +21,5 @@ module.exports = {
   resetMocks: true,
   restoreMocks: true,
   maxWorkers: 1,
-  silent: true
+  silent: true,
 };

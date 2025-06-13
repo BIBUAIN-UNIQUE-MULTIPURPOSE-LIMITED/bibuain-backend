@@ -346,8 +346,7 @@ export class BinanceService {
 
             return { free, locked, total };
           }
-        }
-        else if (response.data.length > 0) {
+        } else if (response.data.length > 0) {
           const assetBalance = response.data[0];
           const fmt = (s: string) => parseFloat(s).toFixed(8);
           const free = fmt(assetBalance.free || "0");
