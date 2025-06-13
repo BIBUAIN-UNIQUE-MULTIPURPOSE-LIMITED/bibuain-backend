@@ -62,7 +62,7 @@ router
     roleAuth([UserType.ADMIN]),
     validateTemplateFields,
     validateRequest,
-    createMessageTemplate
+    createMessageTemplate,
   )
   .get(getAllMessageTemplates);
 
@@ -74,7 +74,7 @@ router
     roleAuth([UserType.ADMIN]),
     validateTemplateFields,
     validateRequest,
-    updateMessageTemplate
+    updateMessageTemplate,
   )
   .delete(authenticate, roleAuth([UserType.ADMIN]), deleteMessageTemplate);
 

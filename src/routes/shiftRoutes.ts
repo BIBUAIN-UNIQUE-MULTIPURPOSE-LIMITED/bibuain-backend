@@ -32,7 +32,7 @@ router.get(
     query("endDate").isISO8601().withMessage("Invalid end date format"),
   ],
   validateRequest,
-  getShiftMetrics
+  getShiftMetrics,
 );
 
 router.get(
@@ -45,7 +45,7 @@ router.get(
     query("endDate").isISO8601().withMessage("Invalid end date format"),
   ],
   validateRequest,
-  getShiftMetrics
+  getShiftMetrics,
 );
 
 // Admin Routes
@@ -58,7 +58,7 @@ router.post(
     body("adminNotes").optional().isString().trim(),
   ],
   validateRequest,
-  forceEndShift
+  forceEndShift,
 );
 
 router.get("/current-shift", authenticate, getCurrentShift);

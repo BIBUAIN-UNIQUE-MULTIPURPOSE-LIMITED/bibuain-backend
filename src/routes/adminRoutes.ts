@@ -25,7 +25,7 @@ router.post(
     body("userType")
       .isIn(["admin", "payer", "rater", "ceo", "customer-support"])
       .withMessage(
-        "Invalid userType. Allowed values: admin, payer, rater, ceo, customer-support"
+        "Invalid userType. Allowed values: admin, payer, rater, ceo, customer-support",
       ),
     body("fullName")
       .notEmpty()
@@ -40,7 +40,7 @@ router.post(
       .withMessage("Phone must be a valid mobile number"),
   ],
   validateRequest,
-  createUser
+  createUser,
 );
 
 router.get("/user/all", authenticate, roleAuth([UserType.ADMIN]), getAllUsers);
@@ -49,7 +49,7 @@ router.get(
   "/user/single/:id",
   authenticate,
   roleAuth([UserType.ADMIN]),
-  getSingleUser
+  getSingleUser,
 );
 
 router.delete("/user/:id", deleteUser);
@@ -78,11 +78,11 @@ router.put(
       .optional()
       .isIn(["admin", "payer", "rater", "ceo", "customer-support"])
       .withMessage(
-        "Invalid userType. Allowed values: admin, payer, rater, ceo, customer-support"
+        "Invalid userType. Allowed values: admin, payer, rater, ceo, customer-support",
       ),
     validateRequest,
   ],
-  editUser
+  editUser,
 );
 
 export default router;

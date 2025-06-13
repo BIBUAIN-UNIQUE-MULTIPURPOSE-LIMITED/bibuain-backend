@@ -11,7 +11,7 @@ import { Message } from "../models/messages";
 export const createChat = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const errors = validationResult(req);
@@ -51,7 +51,7 @@ export const createChat = async (
     if (existingChat) {
       throw new ErrorHandler(
         "A chat with these participants already exists",
-        400
+        400,
       );
     }
 
@@ -75,7 +75,7 @@ export const createChat = async (
 export const getChats = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const userId = req.user?.id;
@@ -90,7 +90,7 @@ export const getChats = async (
       .leftJoinAndSelect("chat.participants", "user")
       .where(
         "chat.id IN (SELECT cp.chat_id FROM chat_participants cp WHERE cp.user_id = :userId)",
-        { userId }
+        { userId },
       )
       .getMany();
 
@@ -107,7 +107,7 @@ export const getChats = async (
 export const getChat = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { chatId } = req.params;
@@ -144,7 +144,7 @@ export const getChat = async (
 export const deleteChat = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { chatId } = req.params;

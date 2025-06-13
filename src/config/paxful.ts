@@ -42,7 +42,7 @@ export class PaxfulService {
   public label?: string;
 
   constructor(config: PaxfulAccountConfig) {
-    // console.log('Initializing PaxfulService with:', 
+    // console.log('Initializing PaxfulService with:',
     //   {
     //   clientId: config.clientId ? 'PRESENT' : 'MISSING',
     //   clientIdLength: config.clientId?.length,
@@ -65,7 +65,7 @@ export class PaxfulService {
 
   private async makeRequest(
     endpoint: string,
-    data: Record<string, any> = {}
+    data: Record<string, any> = {},
   ): Promise<any> {
     try {
       // console.log(`[${this.label}] Making request to ${endpoint}`);
@@ -74,10 +74,9 @@ export class PaxfulService {
     } catch (error: any) {
       console.error(`[${this.label}] Request failed:`, {
         endpoint,
-        
       });
       throw new Error(
-        `Paxful API Error for account ${this.label}: ${error.message}`
+        `Paxful API Error for account ${this.label}: ${error.message}`,
       );
     }
   }
@@ -86,7 +85,9 @@ export class PaxfulService {
   async listActiveTrades(): Promise<any[]> {
     try {
       // Use the correct endpoint for trades – adjust params as needed
-      const response = await this.paxfulApi.invoke("/paxful/v1/trade/list", { active: true });
+      const response = await this.paxfulApi.invoke("/paxful/v1/trade/list", {
+        active: true,
+      });
 
       // Adjust the check based on how Paxful returns the trades data
       if (!response.data?.trades) {
@@ -97,11 +98,10 @@ export class PaxfulService {
       return response.data.trades;
     } catch (error: any) {
       throw new Error(
-        `Failed to list active trades for account ${this.label}: ${error.message}`
+        `Failed to list active trades for account ${this.label}: ${error.message}`,
       );
     }
   }
-
 
   async getTradeDetails(tradeHash: string) {
     return await this.makeRequest("/paxful/v1/trade/get", {
@@ -111,53 +111,65 @@ export class PaxfulService {
 
   async markTradeAsPaid(tradeHash: string): Promise<boolean> {
     try {
-        // First get the current trade status
-        const tradeDetails = await this.getTradeDetails(tradeHash);
-        
-        // Check if trade is already completed
-        if (tradeDetails.data?.trade_status === 'completed' || tradeDetails.data?.trade_status === 'paid') {
-            return true; // Already paid, consider this a success
-        }
-        
-        // Check if trade is in a terminal state
-        if (['cancelled', 'expired', 'disputed'].includes(tradeDetails.data?.trade_status)) {
-            throw new Error(`Trade is in ${tradeDetails.data.status} state and cannot be marked as paid`);
-        }
+      // First get the current trade status
+      const tradeDetails = await this.getTradeDetails(tradeHash);
 
-        // If trade is active, attempt to mark as paid
-        const response = await this.makeRequest("/paxful/v1/trade/paid", {
-            trade_hash: tradeHash,
-        });
+      // Check if trade is already completed
+      if (
+        tradeDetails.data?.trade_status === "completed" ||
+        tradeDetails.data?.trade_status === "paid"
+      ) {
+        return true; // Already paid, consider this a success
+      }
 
-        // Handle API response
-        if (response.data?.status === 'error') {
-            throw new Error(response.data.message || 'Paxful API returned error');
-        }
+      // Check if trade is in a terminal state
+      if (
+        ["cancelled", "expired", "disputed"].includes(
+          tradeDetails.data?.trade_status,
+        )
+      ) {
+        throw new Error(
+          `Trade is in ${tradeDetails.data.status} state and cannot be marked as paid`,
+        );
+      }
 
-        return true;
+      // If trade is active, attempt to mark as paid
+      const response = await this.makeRequest("/paxful/v1/trade/paid", {
+        trade_hash: tradeHash,
+      });
+
+      // Handle API response
+      if (response.data?.status === "error") {
+        throw new Error(response.data.message || "Paxful API returned error");
+      }
+
+      return true;
     } catch (error: any) {
-        // Handle HTTP errors
-        if (error.response) {
-            // Handle 404 - Trade not found
-            if (error.response.status === 404) {
-                throw new Error(`Trade ${tradeHash} not found - may have expired or been canceled`);
-            }
-            
-            // Handle rate limiting
-            if (error.response.status === 429) {
-                throw new Error('Too many requests - please try again later');
-            }
-            
-            // Handle other HTTP errors
-            const errorData = error.response.data?.error || error.response.data;
-            throw new Error(errorData?.message || `HTTP ${error.response.status} error`);
+      // Handle HTTP errors
+      if (error.response) {
+        // Handle 404 - Trade not found
+        if (error.response.status === 404) {
+          throw new Error(
+            `Trade ${tradeHash} not found - may have expired or been canceled`,
+          );
         }
-        
-        // Re-throw other errors
-        throw error;
-    }
-}
 
+        // Handle rate limiting
+        if (error.response.status === 429) {
+          throw new Error("Too many requests - please try again later");
+        }
+
+        // Handle other HTTP errors
+        const errorData = error.response.data?.error || error.response.data;
+        throw new Error(
+          errorData?.message || `HTTP ${error.response.status} error`,
+        );
+      }
+
+      // Re-throw other errors
+      throw error;
+    }
+  }
 
   async getBitcoinPrice(): Promise<number> {
     const paxfulApi = new PaxfulApi({
@@ -167,18 +179,17 @@ export class PaxfulService {
 
     const paxfulRateResponse = await paxfulApi.invoke(
       "/paxful/v1/currency/btc",
-      {}
+      {},
     );
     return paxfulRateResponse.price;
   }
 
-  async getWalletBalance(cryptoCurrency: string = 'BTC'): Promise<string> {
+  async getWalletBalance(cryptoCurrency: string = "BTC"): Promise<string> {
     const response = await this.makeRequest("/paxful/v1/wallet/balance", {
-      crypto_currency_code: cryptoCurrency
+      crypto_currency_code: cryptoCurrency,
     });
     return response.data.balance;
   }
-
 
   async getTradeChat(tradeHash: string): Promise<any> {
     try {
@@ -192,14 +203,14 @@ export class PaxfulService {
       };
     } catch (error: any) {
       throw new Error(
-        `Failed to fetch trade chat for account ${this.label}: ${error.message}`
+        `Failed to fetch trade chat for account ${this.label}: ${error.message}`,
       );
     }
   }
 
   async sendTradeMessage(
     tradeHash: string,
-    message: string
+    message: string,
   ): Promise<TradeMessage> {
     try {
       const response = await this.makeRequest("/paxful/v1/trade-chat/post", {
@@ -210,7 +221,7 @@ export class PaxfulService {
       return response.data ? response.data.message : response.error.message;
     } catch (error: any) {
       throw new Error(
-        `Failed to send trade message for account ${this.label}: ${error.message}`
+        `Failed to send trade message for account ${this.label}: ${error.message}`,
       );
     }
   }
@@ -221,17 +232,17 @@ export class PaxfulService {
       limit?: number;
       offset?: number;
       currency?: string;
-    } = {}
+    } = {},
   ): Promise<WalletTransaction[]> {
     try {
       const response = await this.makeRequest(
         "/paxful/v1/wallet/transactions",
-        options
+        options,
       );
       return response.data.transactions;
     } catch (error: any) {
       throw new Error(
-        `Failed to fetch transaction history for account ${this.label}: ${error.message}`
+        `Failed to fetch transaction history for account ${this.label}: ${error.message}`,
       );
     }
   }
@@ -242,14 +253,14 @@ export class PaxfulService {
       status?: "active" | "paused" | "closed";
       offset?: number;
       limit?: number;
-    } = {}
+    } = {},
   ): Promise<OfferDetails[]> {
     try {
       const response = await this.makeRequest("/paxful/v1/offer/list", params);
       return response.data.offers;
     } catch (error: any) {
       throw new Error(
-        `Failed to list offers for account ${this.label}: ${error.message}`
+        `Failed to list offers for account ${this.label}: ${error.message}`,
       );
     }
   }
@@ -262,7 +273,7 @@ export class PaxfulService {
       return true;
     } catch (error: any) {
       throw new Error(
-        `Failed to cancel trade for account ${this.label}: ${error.message}`
+        `Failed to cancel trade for account ${this.label}: ${error.message}`,
       );
     }
   }
@@ -270,7 +281,7 @@ export class PaxfulService {
   async uploadTradeDocument(
     tradeHash: string,
     document: Buffer,
-    filename: string
+    filename: string,
   ): Promise<{
     document_id: string;
     url: string;
@@ -282,12 +293,12 @@ export class PaxfulService {
           trade_hash: tradeHash,
           document: document,
           filename: filename,
-        }
+        },
       );
       return response.data.document;
     } catch (error: any) {
       throw new Error(
-        `Failed to upload trade document for account ${this.label}: ${error.message}`
+        `Failed to upload trade document for account ${this.label}: ${error.message}`,
       );
     }
   }
@@ -300,7 +311,7 @@ export class PaxfulService {
       return response.data.user;
     } catch (error: any) {
       throw new Error(
-        `Failed to fetch user profile for account ${this.label}: ${error.message}`
+        `Failed to fetch user profile for account ${this.label}: ${error.message}`,
       );
     }
   }
@@ -311,17 +322,17 @@ export class PaxfulService {
       type?: "received" | "given";
       limit?: number;
       offset?: number;
-    } = {}
+    } = {},
   ): Promise<any[]> {
     try {
       const response = await this.makeRequest(
         "/paxful/v1/feedback/list",
-        params
+        params,
       );
       return response.data.feedback;
     } catch (error: any) {
       throw new Error(
-        `Failed to fetch feedback for account ${this.label}: ${error.message}`
+        `Failed to fetch feedback for account ${this.label}: ${error.message}`,
       );
     }
   }
@@ -334,7 +345,7 @@ export class PaxfulService {
 
       const response = await this.paxfulApi.invoke(
         "/paxful/v1/offer/list",
-        params
+        params,
       );
 
       if (!response.data?.offers) {
@@ -345,7 +356,7 @@ export class PaxfulService {
       return response.data.offers;
     } catch (error: any) {
       throw new Error(
-        `Failed to list active offers for account ${this.label}: ${error.message}`
+        `Failed to list active offers for account ${this.label}: ${error.message}`,
       );
     }
   }
@@ -354,78 +365,88 @@ export class PaxfulService {
     try {
       const params = {
         active: "false",
-        offer_type: "buy" 
+        offer_type: "buy",
       };
-      
+
       const response = await this.paxfulApi.invoke(
         "/paxful/v1/offer/all",
-        params
+        params,
       );
-      
+
       // Check if we have a valid response with offers
       if (!response?.data?.offers) {
         console.warn("No offers found in Paxful response:", response);
         return [];
       }
-      
+
       // Log is_blocked status for each offer
       response.data.offers.forEach((offer: any, index: number) => {
         // console.log(`Offer ${index} active status:`, offer.active);
       });
-      
+
       // Alternatively, log the count of blocked offers
-      const blockedOffers = response.data.offers.filter((offer: any) => offer.active === false);
+      const blockedOffers = response.data.offers.filter(
+        (offer: any) => offer.active === false,
+      );
       // console.log(`Found ${blockedOffers.length} blocked offers out of ${response.data.offers.length} total`);
-      
+
       // Return all blocked offers
-      return response.data.offers.filter((offer: any) => offer.active === false);
+      return response.data.offers.filter(
+        (offer: any) => offer.active === false,
+      );
     } catch (err: any) {
       console.error("Error fetching Paxful deactivated offers:", err);
-      throw new Error(`Failed to fetch Paxful deactivated offers: ${err.message}`);
+      throw new Error(
+        `Failed to fetch Paxful deactivated offers: ${err.message}`,
+      );
     }
   }
-  
- async getOfferDetails(offerHash: string): Promise<any> {
-      // console.log(`[PaxfulService] → getOfferDetails(${offerHash}) called`);
-      try {
-        const params = { offer_hash: offerHash };
-        const response = await this.paxfulApi.invoke(
-          "/paxful/v1/offer/get",
-          params
+
+  async getOfferDetails(offerHash: string): Promise<any> {
+    // console.log(`[PaxfulService] → getOfferDetails(${offerHash}) called`);
+    try {
+      const params = { offer_hash: offerHash };
+      const response = await this.paxfulApi.invoke(
+        "/paxful/v1/offer/get",
+        params,
+      );
+
+      // The wrapper returns:
+      // { status: 'success', timestamp: ..., data: { id: ..., offer_hash: ..., … } }
+      const offer = response?.data;
+      if (!offer || typeof offer !== "object") {
+        console.warn(
+          "[PaxfulService] → No offer data found in Paxful response:",
+          response,
         );
-  
-        // The wrapper returns:
-        // { status: 'success', timestamp: ..., data: { id: ..., offer_hash: ..., … } }
-        const offer = response?.data;
-        if (!offer || typeof offer !== "object") {
-          console.warn(
-            "[PaxfulService] → No offer data found in Paxful response:",
-            response
-          );
-          return null;
-        }
-  
-        console.log(
-          "[PaxfulService] → Retrieved offer details:",
-          // you can JSON.stringify if you want a single‑line dump
-          offer
-        );
-        return offer;
-      } catch (err: any) {
-        console.error("[PaxfulService] → Error in getOfferDetails:", err);
-        throw new Error(`Failed to fetch offer details: ${err.message}`);
+        return null;
       }
+
+      console.log(
+        "[PaxfulService] → Retrieved offer details:",
+        // you can JSON.stringify if you want a single‑line dump
+        offer,
+      );
+      return offer;
+    } catch (err: any) {
+      console.error("[PaxfulService] → Error in getOfferDetails:", err);
+      throw new Error(`Failed to fetch offer details: ${err.message}`);
     }
-  
+  }
 
   async activateOffer(offerHash: string): Promise<any> {
     try {
       const params: Record<string, string> = { offer_hash: offerHash };
-      const response = await this.paxfulApi.invoke("/paxful/v1/offer/activate", params);
+      const response = await this.paxfulApi.invoke(
+        "/paxful/v1/offer/activate",
+        params,
+      );
       console.log(`Activated Paxful offer ${offerHash}:`, response);
       return response;
     } catch (error: any) {
-      throw new Error(`Failed to activate Paxful offer ${offerHash}: ${error.message}`);
+      throw new Error(
+        `Failed to activate Paxful offer ${offerHash}: ${error.message}`,
+      );
     }
   }
 
@@ -433,13 +454,13 @@ export class PaxfulService {
     try {
       const response = await this.paxfulApi.invoke(
         "/paxful/v1/offer/turn-on",
-        {}
+        {},
       );
       console.log(response);
       return response.data;
     } catch (error: any) {
       throw new Error(
-        `Failed to turn off all offers for account ${this.label}: ${error.message}`
+        `Failed to turn off all offers for account ${this.label}: ${error.message}`,
       );
     }
   }
@@ -455,7 +476,7 @@ export class PaxfulService {
     } catch (error: any) {
       console.error(`[${this.label}] Paxful offer update failed:`, error);
       throw new Error(
-        `Failed to update offer for account ${this.label}: ${error.message}`
+        `Failed to update offer for account ${this.label}: ${error.message}`,
       );
     }
   }
@@ -463,13 +484,13 @@ export class PaxfulService {
     try {
       const response = await this.paxfulApi.invoke(
         "/paxful/v1/offer/turn-off",
-        {}
+        {},
       );
       console.log(response);
       return response.data;
     } catch (error: any) {
       throw new Error(
-        `Failed to turn off all offers for account ${this.label}: ${error.message}`
+        `Failed to turn off all offers for account ${this.label}: ${error.message}`,
       );
     }
   }
@@ -477,7 +498,10 @@ export class PaxfulService {
   async getBitcoinPriceInNgn(): Promise<number> {
     try {
       // Get BTC price in USD
-      const btcUsdResponse = await this.makeRequest("/paxful/v1/currency/btc", {});
+      const btcUsdResponse = await this.makeRequest(
+        "/paxful/v1/currency/btc",
+        {},
+      );
       if (!btcUsdResponse?.price) {
         throw new Error("Invalid BTC price response");
       }
@@ -485,10 +509,13 @@ export class PaxfulService {
       const btcPriceUsd = parseFloat(btcUsdResponse.price);
 
       // Get NGN rate
-      const listResponse = await this.makeRequest("/paxful/v1/currency/list", {});
+      const listResponse = await this.makeRequest(
+        "/paxful/v1/currency/list",
+        {},
+      );
       if (listResponse?.data?.currencies) {
         const ngnData = listResponse.data.currencies.find(
-          (cur: any) => cur.code.toLowerCase() === "ngn"
+          (cur: any) => cur.code.toLowerCase() === "ngn",
         );
 
         if (ngnData?.rate?.usd) {
@@ -504,10 +531,13 @@ export class PaxfulService {
 
   async getUsdtPriceInNgn(): Promise<number> {
     try {
-      const listResponse = await this.makeRequest("/paxful/v1/currency/list", {});
+      const listResponse = await this.makeRequest(
+        "/paxful/v1/currency/list",
+        {},
+      );
       if (listResponse?.data?.currencies) {
         const ngnData = listResponse.data.currencies.find(
-          (cur: any) => cur.code.toLowerCase() === "ngn"
+          (cur: any) => cur.code.toLowerCase() === "ngn",
         );
 
         if (ngnData?.rate?.usdt) {
@@ -524,7 +554,11 @@ export class PaxfulService {
       throw new Error(`Failed to fetch USDT/NGN rate: ${error}`);
     }
   }
-  async getFeedbackStats(params: { username?: string; role?: "buyer" | "seller"; rating: number }): Promise<number> {
+  async getFeedbackStats(params: {
+    username?: string;
+    role?: "buyer" | "seller";
+    rating: number;
+  }): Promise<number> {
     try {
       // Convert the 0 rating to -1 for negative feedback as per the API documentation
       const apiRating = params.rating === 0 ? -1 : params.rating;
@@ -540,19 +574,31 @@ export class PaxfulService {
 
       // console.log(`[paxfulService] Request params:`, requestParams);
 
-      const response = await this.makeRequest("/paxful/v1/feedback/list", requestParams);
+      const response = await this.makeRequest(
+        "/paxful/v1/feedback/list",
+        requestParams,
+      );
 
       // Log the full response for debugging
-      console.log(`[paxfulService] Full response for ${params.username}:`, JSON.stringify(response));
+      console.log(
+        `[paxfulService] Full response for ${params.username}:`,
+        JSON.stringify(response),
+      );
 
       // Check for errors in the response
-      if (response && response.status === 'error') {
-        console.log(`[paxfulService] API returned error: ${response.error?.message || 'Unknown error'}`);
+      if (response && response.status === "error") {
+        console.log(
+          `[paxfulService] API returned error: ${response.error?.message || "Unknown error"}`,
+        );
         return 0;
       }
 
       // Check different possible response formats
-      if (response && response.data && typeof response.data.total_count === 'number') {
+      if (
+        response &&
+        response.data &&
+        typeof response.data.total_count === "number"
+      ) {
         return response.data.total_count;
       } else if (response.total_count !== undefined) {
         return response.total_count;
@@ -562,27 +608,33 @@ export class PaxfulService {
         return response.feedback.length;
       }
 
-      console.log('[paxfulService] Unexpected response format:', response);
+      console.log("[paxfulService] Unexpected response format:", response);
       return 0;
     } catch (error: any) {
-      console.error('Error in Paxful getFeedbackStats:', error.message);
+      console.error("Error in Paxful getFeedbackStats:", error.message);
       return 0;
     }
   }
 
   async listCompletedTrades(page: number = 1): Promise<any[]> {
     try {
-      const response = await this.makeRequest("/paxful/v1/trade/completed", { page });
+      const response = await this.makeRequest("/paxful/v1/trade/completed", {
+        page,
+      });
       if (!response.data?.trades) {
-        console.warn(`[${this.label}] No completed trades data found. Response:`, response);
+        console.warn(
+          `[${this.label}] No completed trades data found. Response:`,
+          response,
+        );
         return [];
       }
       return response.data.trades;
     } catch (error: any) {
-      throw new Error(`Failed to list completed trades for account ${this.label}: ${error.message}`);
+      throw new Error(
+        `Failed to list completed trades for account ${this.label}: ${error.message}`,
+      );
     }
   }
-
 
   async createOffer(params: any) {
     try {
@@ -609,7 +661,7 @@ export class PaxfulService {
 
       const response = await this.makeRequest(
         "/paxful/v1/offer/create",
-        requestParams
+        requestParams,
       );
       // console.log(response);
       return {
@@ -621,7 +673,6 @@ export class PaxfulService {
     }
   }
 }
-
 
 const apiConfig: PaxfulAccountConfig = {
   clientId:

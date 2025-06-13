@@ -20,13 +20,15 @@ const server = http.createServer(app);
 
 export const io = new Server(server, {
   cors: {
-    origin: ["http://localhost:5173", "https://app.bibuain.ng", "https://main.d251fvvwfaaim4.amplifyapp.com"],
+    origin: [
+      "http://localhost:5173",
+      "https://app.bibuain.ng",
+      "https://main.d251fvvwfaaim4.amplifyapp.com",
+    ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     credentials: true,
   },
 });
-
-
 
 class OnlineUsersManager {
   private users: Set<string> = new Set();
@@ -69,7 +71,6 @@ class OnlineUsersManager {
     }
     return false;
   }
-
 
   getOnlineUsers(): string[] {
     return Array.from(this.users);
@@ -132,7 +133,7 @@ io.on("connection", (socket) => {
           if (status === "offline") {
             const wasRemoved = onlineUsersManager.removeSocket(
               userId,
-              socket.id
+              socket.id,
             );
             if (wasRemoved) {
               socket.leave(`notifications:${userId}`);
@@ -148,7 +149,7 @@ io.on("connection", (socket) => {
         console.error("Error in userStatusUpdate:", error);
         socket.emit("error", "Error updating user status");
       }
-    }
+    },
   );
 
   socket.on("getCostPrice", async (platform: string) => {
@@ -191,7 +192,7 @@ io.on("connection", (socket) => {
     console.log(`Client ${socket.id} watching trade ${tradeId}`);
     socket.join(`trade:${tradeId}`);
   });
-  
+
   socket.on("unwatchTrade", (tradeId) => {
     console.log(`Client ${socket.id} stopped watching trade ${tradeId}`);
     socket.leave(`trade:${tradeId}`);
@@ -270,7 +271,7 @@ io.on("connection", (socket) => {
         console.error("Error updating notification read status:", error);
         socket.emit("error", "Error updating notification");
       }
-    }
+    },
   );
 
   // Handle disconnection
@@ -296,12 +297,12 @@ io.on("connection", (socket) => {
 const PORT = process.env.PORT;
 (async () => {
   try {
-    if (process.env.NODE_ENV !== 'test') {
+    if (process.env.NODE_ENV !== "test") {
       await dbConnect.initialize();
       console.log("✅ DB connection established");
     }
 
-    if (process.env.NODE_ENV !== 'test') {
+    if (process.env.NODE_ENV !== "test") {
       server.listen(PORT, () => {
         console.log(`🚀 Server is running on port ${PORT}`);
       });

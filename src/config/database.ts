@@ -25,7 +25,6 @@ const host = process.env.DB_HOST;
 
 const isProd = process.env.NODE_ENV === "production";
 
-
 const dbConnect = new DataSource({
   type: "postgres",
   host: `${host}`,
@@ -51,9 +50,7 @@ const dbConnect = new DataSource({
     Chat,
     Message,
   ],
-  migrations: isProd
-    ? ["dist/migration/**/*.js"] 
-    : ["src/migration/**/*.ts"], 
+  migrations: isProd ? ["dist/migration/**/*.js"] : ["src/migration/**/*.ts"],
 });
 
 // // Initialize database connection

@@ -21,7 +21,7 @@ export interface UserRequest extends Request {
 export const authenticate = (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): void => {
   const token = req.cookies?.token;
   if (!token) {
@@ -41,7 +41,7 @@ export const authenticate = (
 export const isAdmin = (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): void => {
   if (!req.user) {
     res.status(401).json({ message: "Authentication required" });

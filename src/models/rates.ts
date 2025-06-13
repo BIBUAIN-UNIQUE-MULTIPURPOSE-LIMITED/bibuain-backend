@@ -39,10 +39,9 @@ export class Rates {
   @Column({
     type: "jsonb",
     nullable: true,
-    default: {}
+    default: {},
   })
   platformCostPrices?: Record<string, number>;
-  
 
   @Column({ type: "numeric", precision: 50, scale: 8, nullable: true })
   paxfulRate?: string;

@@ -15,7 +15,6 @@ import crypto from "crypto";
 import { ActivityLog, ActivityType } from "../models/activityLogs";
 import { io } from "../server";
 
-
 const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 const TOKEN_EXPIRATION = "1d";
 
@@ -25,14 +24,14 @@ const setTokenCookie = (res: Response, token: string) => {
     secure: true,
     sameSite: "none",
     maxAge: 24 * 60 * 60 * 1000 * 10,
-    path: "/"
+    path: "/",
   });
 };
 const createLog = async (
   user: User | null,
   activity: ActivityType,
   description: string,
-  details?: Record<string, any>
+  details?: Record<string, any>,
 ) => {
   if (user === null) {
     return;
@@ -52,7 +51,7 @@ const createLog = async (
 export const login = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const errors = validationResult(req);
@@ -77,7 +76,7 @@ export const login = async (
         user,
         ActivityType.USER_LOGIN,
         "Login attempted on inactive account",
-        { status: user.status }
+        { status: user.status },
       );
       throw new ErrorHandler("User account is not active", 403);
     }
@@ -112,18 +111,25 @@ export const login = async (
 export const verifyTwoFa: RequestHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { email, twoFaCode } = req.body;
     const userRepo = dbConnect.getRepository(User);
     const user = await userRepo.findOne({ where: { email } });
     if (!user || !user.twoFaCode || !user.twoFaExpires) {
-      await createLog(null, ActivityType.USER_LOGIN, "Failed 2FA verification", { email, reason: "2FA not initiated or user not found" });
+      await createLog(
+        null,
+        ActivityType.USER_LOGIN,
+        "Failed 2FA verification",
+        { email, reason: "2FA not initiated or user not found" },
+      );
       throw new ErrorHandler("2FA not initiated or user not found", 404);
     }
     if (new Date() > user.twoFaExpires || user.twoFaCode !== twoFaCode) {
-      await createLog(user, ActivityType.USER_LOGIN, "Invalid 2FA attempt", { email: user.email });
+      await createLog(user, ActivityType.USER_LOGIN, "Invalid 2FA attempt", {
+        email: user.email,
+      });
       throw new ErrorHandler("Invalid or expired 2FA code", 401);
     }
 
@@ -131,14 +137,23 @@ export const verifyTwoFa: RequestHandler = async (
     user.twoFaExpires = undefined;
     await userRepo.save(user);
 
-    const token = jwt.sign({ id: user.id, userType: user.userType }, JWT_SECRET, { expiresIn: TOKEN_EXPIRATION });
+    const token = jwt.sign(
+      { id: user.id, userType: user.userType },
+      JWT_SECRET,
+      { expiresIn: TOKEN_EXPIRATION },
+    );
     setTokenCookie(res, token);
 
-    await createLog(user, ActivityType.USER_LOGIN, "User logged in successfully", {
-      email: user.email,
-      userType: user.userType,
-      loginTime: new Date().toISOString(),
-    });
+    await createLog(
+      user,
+      ActivityType.USER_LOGIN,
+      "User logged in successfully",
+      {
+        email: user.email,
+        userType: user.userType,
+        loginTime: new Date().toISOString(),
+      },
+    );
 
     res.json({
       success: true,
@@ -150,11 +165,10 @@ export const verifyTwoFa: RequestHandler = async (
   }
 };
 
-
 export const logout = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     if (req.user?.id) {
@@ -165,10 +179,15 @@ export const logout = async (
         user.clockedIn = false;
         await userRepo.save(user);
 
-        await createLog(user, ActivityType.USER_LOGOUT, "User logged out successfully", {
-          email: user.email,
-          logoutTime: new Date().toISOString(),
-        });
+        await createLog(
+          user,
+          ActivityType.USER_LOGOUT,
+          "User logged out successfully",
+          {
+            email: user.email,
+            logoutTime: new Date().toISOString(),
+          },
+        );
         io.emit("userStatusUpdate", { userId: user.id, status: "offline" });
       }
     }
@@ -179,11 +198,10 @@ export const logout = async (
   }
 };
 
-
 export const getCurrentUser = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const userId = req.user?.id;
@@ -201,7 +219,7 @@ export const getCurrentUser = async (
     const token = jwt.sign(
       { id: user.id, userType: user.userType },
       JWT_SECRET,
-      { expiresIn: TOKEN_EXPIRATION }
+      { expiresIn: TOKEN_EXPIRATION },
     );
 
     setTokenCookie(res, token);
@@ -218,7 +236,7 @@ export const getCurrentUser = async (
 export const enableTwoFa: RequestHandler = async (
   req: UserRequest,
   res,
-  next
+  next,
 ) => {
   try {
     const userId = req.user?.id;
@@ -256,13 +274,13 @@ export const verifyEmail: RequestHandler = async (req, res, next) => {
     if (!code || typeof code !== "string") {
       throw new ErrorHandler(
         "Verification code is required and must be a string",
-        400
+        400,
       );
     }
     if (!password || typeof password !== "string" || password.length < 8) {
       throw new ErrorHandler(
         "Password is required and must be at least 8 characters long",
-        400
+        400,
       );
     }
 
@@ -298,7 +316,7 @@ export const verifyEmail: RequestHandler = async (req, res, next) => {
       {
         email: user.email,
         verificationTime: new Date().toISOString(),
-      }
+      },
     );
 
     res.status(200).json({
@@ -317,7 +335,7 @@ export const verifyEmail: RequestHandler = async (req, res, next) => {
 export const requestEmailVerification: RequestHandler = async (
   req: UserRequest,
   res,
-  next
+  next,
 ) => {
   try {
     const userId = req.user?.id;
@@ -343,7 +361,7 @@ export const requestEmailVerification: RequestHandler = async (
       {
         email: user.email,
         requestTime: new Date().toISOString(),
-      }
+      },
     );
 
     res.json({
@@ -377,7 +395,7 @@ export const requestPasswordReset: RequestHandler = async (req, res, next) => {
       {
         email: user.email,
         requestTime: new Date().toISOString(),
-      }
+      },
     );
     res.json({
       success: true,
@@ -393,7 +411,7 @@ export const requestPasswordReset: RequestHandler = async (req, res, next) => {
 export const editUserDetails = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const errors = validationResult(req);
@@ -446,19 +464,19 @@ export const editUserDetails = async (
           fullName:
             fullName !== originalDetails.fullName
               ? {
-                from: originalDetails.fullName,
-                to: fullName,
-              }
+                  from: originalDetails.fullName,
+                  to: fullName,
+                }
               : undefined,
           avatar:
             user.avatar !== originalDetails.avatar
               ? {
-                from: originalDetails.avatar,
-                to: user.avatar,
-              }
+                  from: originalDetails.avatar,
+                  to: user.avatar,
+                }
               : undefined,
         },
-      }
+      },
     );
 
     res.json({
@@ -476,7 +494,7 @@ export const editUserDetails = async (
 export const changePassword = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const errors = validationResult(req);
@@ -500,7 +518,7 @@ export const changePassword = async (
 
     const isPasswordValid = await bcrypt.compare(
       currentPassword,
-      user.password
+      user.password,
     );
     if (!isPasswordValid) {
       throw new ErrorHandler("Current password is incorrect", 401);
@@ -516,7 +534,7 @@ export const changePassword = async (
       {
         userId: user.id,
         changeTime: new Date().toISOString(),
-      }
+      },
     );
 
     res.json({
@@ -576,7 +594,7 @@ export const forgotPassword: RequestHandler = async (req, res, next) => {
       {
         email: user.email,
         requestTime: new Date().toISOString(),
-      }
+      },
     );
     res.status(200).json({
       success: true,
@@ -632,7 +650,7 @@ export const resetPassword: RequestHandler = async (req, res, next) => {
       {
         userId: user.id,
         resetTime: new Date().toISOString(),
-      }
+      },
     );
 
     res.status(200).json({

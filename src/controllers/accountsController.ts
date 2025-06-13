@@ -12,7 +12,7 @@ const ACCOUNT_ENCRYPTION_SALT_ROUNDS = 12;
 
 const encryptAccountCredentials = async (
   apiKey: string,
-  apiSecret: string
+  apiSecret: string,
 ) => ({
   encryptedKey: await bcrypt.hash(apiKey, ACCOUNT_ENCRYPTION_SALT_ROUNDS),
   encryptedSecret: await bcrypt.hash(apiSecret, ACCOUNT_ENCRYPTION_SALT_ROUNDS),
@@ -21,7 +21,7 @@ const encryptAccountCredentials = async (
 export const createAccount: RequestHandler = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const errors = validationResult(req);
@@ -45,7 +45,7 @@ export const createAccount: RequestHandler = async (
     if (existingAccount) {
       throw new ErrorHandler(
         "Account username already exists on this platform",
-        409
+        409,
       );
     }
 
@@ -82,7 +82,7 @@ export const createAccount: RequestHandler = async (
 export const updateAccount: RequestHandler = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const errors = validationResult(req);
@@ -117,7 +117,7 @@ export const updateAccount: RequestHandler = async (
       if (existingAccount) {
         throw new ErrorHandler(
           "Account username already exists on this platform",
-          409
+          409,
         );
       }
       account.account_username = account_username;
@@ -150,7 +150,7 @@ export const updateAccount: RequestHandler = async (
 export const deleteAccount: RequestHandler = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { id } = req.params;
@@ -180,7 +180,7 @@ export const deleteAccount: RequestHandler = async (
 export const getAllAccounts: RequestHandler = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const userId = req.user?.id;
@@ -208,7 +208,7 @@ export const getAllAccounts: RequestHandler = async (
 export const getSingleAccount: RequestHandler = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { id } = req.params;

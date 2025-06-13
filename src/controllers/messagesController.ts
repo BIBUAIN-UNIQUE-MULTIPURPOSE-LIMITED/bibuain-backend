@@ -10,7 +10,7 @@ import { UserRequest } from "middlewares/authenticate";
 export const createMessage = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { chatId, content } = req.body;
@@ -33,7 +33,9 @@ export const createMessage = async (
     }
 
     // Find the sender (user)
-    const sender = await dbConnect.getRepository(User).findOne({ where: { id: userId } });
+    const sender = await dbConnect
+      .getRepository(User)
+      .findOne({ where: { id: userId } });
     if (!sender) {
       throw new ErrorHandler("User not found", 404);
     }
@@ -83,7 +85,7 @@ export const createMessage = async (
 export const markMessageAsSeen = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { messageId } = req.params;
@@ -129,7 +131,7 @@ export const markMessageAsSeen = async (
 export const getMessagesInChat = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { chatId } = req.params;
@@ -160,7 +162,7 @@ export const getMessagesInChat = async (
 export const getUnseenMessages = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { chatId } = req.params;
@@ -180,7 +182,7 @@ export const getUnseenMessages = async (
       .where("message.chatId = :chatId", { chatId })
       .andWhere(
         "NOT EXISTS (SELECT 1 FROM message_seen_by WHERE message_id = message.id AND user_id = :userId)",
-        { userId }
+        { userId },
       )
       .orderBy("message.createdAt", "ASC")
       .getMany();
@@ -202,7 +204,7 @@ export const getUnseenMessages = async (
 export const getMessageDetails = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { messageId } = req.params;
@@ -232,7 +234,7 @@ export const getMessageDetails = async (
 export const deleteMessage = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { messageId } = req.params;
@@ -262,7 +264,7 @@ export const deleteMessage = async (
 export const getMessages = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { chatId } = req.params;

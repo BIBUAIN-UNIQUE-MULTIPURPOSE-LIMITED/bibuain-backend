@@ -137,7 +137,7 @@ export class NoonesService {
 
   private async makeAuthenticatedRequest<T>(
     endpoint: string,
-    params: URLSearchParams = new URLSearchParams()
+    params: URLSearchParams = new URLSearchParams(),
   ): Promise<any> {
     if (!this.isInitialized) {
       await this.initialize();
@@ -178,7 +178,7 @@ export class NoonesService {
             "Content-Type": "application/x-www-form-urlencoded",
             Authorization: `Bearer ${accessToken}`,
           },
-        }
+        },
       );
 
       return response.data.price;
@@ -193,28 +193,29 @@ export class NoonesService {
       const params = new URLSearchParams({ trade_hash: tradeHash });
       const response = await this.makeAuthenticatedRequest<any>(
         "/noones/v1/trade/get",
-        params
+        params,
       );
       return response.data.trade;
     } catch (error: any) {
       throw new Error(
-        `Failed to fetch trade details for account ${this.label}: ${error.message}`
+        `Failed to fetch trade details for account ${this.label}: ${error.message}`,
       );
     }
   }
 
   async listActiveTrades(): Promise<any[]> {
     try {
-      const response = await this.makeAuthenticatedRequest<any>("/noones/v1/trade/list");
+      const response = await this.makeAuthenticatedRequest<any>(
+        "/noones/v1/trade/list",
+      );
       console.log(response);
       return response.data?.trades;
     } catch (error: any) {
       throw new Error(
-        `Failed to list active trades for account ${this.label}: ${error.message}`
+        `Failed to list active trades for account ${this.label}: ${error.message}`,
       );
     }
   }
-
 
   async verifyCredentials(): Promise<boolean> {
     try {
@@ -226,14 +227,16 @@ export class NoonesService {
   }
   async getWalletBalances(): Promise<WalletBalance[]> {
     try {
-      const response = await this.makeAuthenticatedRequest<any>("/noones/v1/user/wallet-balances");
+      const response = await this.makeAuthenticatedRequest<any>(
+        "/noones/v1/user/wallet-balances",
+      );
       // console.log("Raw Noones API response:", JSON.stringify(response, null, 2));
-  
+
       const balances: WalletBalance[] = [];
-  
+
       // Extract data from the nested structure
       const data = response.data;
-  
+
       // Add crypto currencies with null checks
       if (data?.cryptoCurrencies?.length) {
         data.cryptoCurrencies.forEach((crypto: any) => {
@@ -245,7 +248,7 @@ export class NoonesService {
           });
         });
       }
-  
+
       // Add fiat currency with null checks
       if (data?.preferredFiatCurrency) {
         balances.push({
@@ -255,13 +258,13 @@ export class NoonesService {
           type: "fiat",
         });
       }
-  
+
       // console.log("Processed Noones balances:", JSON.stringify(balances, null, 2));
       return balances;
     } catch (error: any) {
       console.error(`Noones API error for ${this.label}:`, error);
       throw new Error(
-        `Failed to fetch wallet balances for account ${this.label}: ${error.message}`
+        `Failed to fetch wallet balances for account ${this.label}: ${error.message}`,
       );
     }
   }
@@ -287,11 +290,14 @@ export class NoonesService {
         attachments: response.data.attachments,
       };
     } catch (error: any) {
-      console.error(`Failed to fetch trade chat for account ${this.label}:`, error);
+      console.error(
+        `Failed to fetch trade chat for account ${this.label}:`,
+        error,
+      );
       // Return empty arrays on error instead of throwing
       return {
         messages: [],
-        attachments: []
+        attachments: [],
       };
     }
   }
@@ -316,65 +322,78 @@ export class NoonesService {
       }
     } catch (error: any) {
       throw new Error(
-        `Failed to send trade message for account ${this.label}: ${error.message}`
+        `Failed to send trade message for account ${this.label}: ${error.message}`,
       );
     }
   }
 
   async markTradeAsPaid(tradeHash: string): Promise<boolean> {
     try {
-        // First get the current trade status from Noones
-        const tradeDetails = await this.getTradeDetails(tradeHash);
-        
-        // Check if trade is already completed
-        if (tradeDetails.trade_status === 'completed' || tradeDetails.trade_status === 'paid') {
-            return true; // Already paid, consider this a success
-        }
-        
-        // Check if trade is in a terminal state
-        if (['cancelled', 'expired', 'disputed', 'refunded'].includes(tradeDetails.trade_status)) {
-            throw new Error(`Trade is in ${tradeDetails.status} state and cannot be marked as paid`);
-        }
+      // First get the current trade status from Noones
+      const tradeDetails = await this.getTradeDetails(tradeHash);
 
-        // If trade is active, attempt to mark as paid
-        const params = new URLSearchParams({ trade_hash: tradeHash });
-        const response = await this.makeAuthenticatedRequest<{
-            success: boolean;
-            error?: { code: string; message: string };
-        }>("/noones/v1/trade/paid", params);
+      // Check if trade is already completed
+      if (
+        tradeDetails.trade_status === "completed" ||
+        tradeDetails.trade_status === "paid"
+      ) {
+        return true; // Already paid, consider this a success
+      }
 
-        // Handle API response
-        if (response.error) {
-            throw new Error(response.error.message || 'Noones API returned error');
-        }
+      // Check if trade is in a terminal state
+      if (
+        ["cancelled", "expired", "disputed", "refunded"].includes(
+          tradeDetails.trade_status,
+        )
+      ) {
+        throw new Error(
+          `Trade is in ${tradeDetails.status} state and cannot be marked as paid`,
+        );
+      }
 
-        if (!response.success) {
-            throw new Error('Noones API returned unsuccessful response');
-        }
+      // If trade is active, attempt to mark as paid
+      const params = new URLSearchParams({ trade_hash: tradeHash });
+      const response = await this.makeAuthenticatedRequest<{
+        success: boolean;
+        error?: { code: string; message: string };
+      }>("/noones/v1/trade/paid", params);
 
-        return true;
+      // Handle API response
+      if (response.error) {
+        throw new Error(response.error.message || "Noones API returned error");
+      }
+
+      if (!response.success) {
+        throw new Error("Noones API returned unsuccessful response");
+      }
+
+      return true;
     } catch (error: any) {
-        // Handle HTTP errors
-        if (error.response) {
-            // Handle 404 - Trade not found
-            if (error.response.status === 404) {
-                throw new Error(`Trade ${tradeHash} not found - may have expired or been canceled`);
-            }
-            
-            // Handle rate limiting
-            if (error.response.status === 429) {
-                throw new Error('Too many requests - please try again later');
-            }
-            
-            // Handle other HTTP errors
-            const errorData = error.response.data?.error || error.response.data;
-            throw new Error(errorData?.message || `HTTP ${error.response.status} error`);
+      // Handle HTTP errors
+      if (error.response) {
+        // Handle 404 - Trade not found
+        if (error.response.status === 404) {
+          throw new Error(
+            `Trade ${tradeHash} not found - may have expired or been canceled`,
+          );
         }
-        
-        // Re-throw other errors
-        throw error;
+
+        // Handle rate limiting
+        if (error.response.status === 429) {
+          throw new Error("Too many requests - please try again later");
+        }
+
+        // Handle other HTTP errors
+        const errorData = error.response.data?.error || error.response.data;
+        throw new Error(
+          errorData?.message || `HTTP ${error.response.status} error`,
+        );
+      }
+
+      // Re-throw other errors
+      throw error;
     }
-}
+  }
 
   async getTransactionHistory(
     options: {
@@ -383,7 +402,7 @@ export class NoonesService {
       start_time?: number;
       end_time?: number;
       limit?: number;
-    } = {}
+    } = {},
   ): Promise<any[]> {
     try {
       const params = new URLSearchParams();
@@ -403,7 +422,7 @@ export class NoonesService {
       if (!response.transactions) {
         console.warn(
           `[${this.label}] No transaction data in response:`,
-          response
+          response,
         );
         return [];
       }
@@ -411,7 +430,7 @@ export class NoonesService {
       return response.transactions;
     } catch (error: any) {
       throw new Error(
-        `Failed to fetch transaction history for account ${this.label}: ${error.message}`
+        `Failed to fetch transaction history for account ${this.label}: ${error.message}`,
       );
     }
   }
@@ -422,12 +441,12 @@ export class NoonesService {
       if (offerType) {
         params.append("offer_type", offerType);
       }
-  
+
       const response = await this.makeAuthenticatedRequest<any>(
         "/noones/v1/offer/list",
-        params
+        params,
       );
-  
+
       // Handle different response structures
       if (response.data && Array.isArray(response.data.offers)) {
         return response.data.offers;
@@ -436,12 +455,12 @@ export class NoonesService {
       } else if (Array.isArray(response)) {
         return response;
       }
-  
+
       console.warn(`[${this.label}] No offers data in response:`, response);
       return [];
     } catch (error: any) {
       throw new Error(
-        `Failed to list active offers for account ${this.label}: ${error.message}`
+        `Failed to list active offers for account ${this.label}: ${error.message}`,
       );
     }
   }
@@ -450,37 +469,46 @@ export class NoonesService {
     try {
       // For Noones service
       const params = new URLSearchParams();
-      params.append("active", "false"); 
-      
+      params.append("active", "false");
+
       params.append("offer_type", "buy");
-      
+
       const response = await this.makeAuthenticatedRequest(
         "/noones/v1/offer/all",
-        params
+        params,
       );
-  
+
       // console.log("Deactivated offers Noones : ", response?.data?.offers.active)
       if (response?.data?.offers) {
-        return response.data.offers.filter((offer: any) => offer.active === false);
+        return response.data.offers.filter(
+          (offer: any) => offer.active === false,
+        );
       }
-      
+
       console.warn("No offers or trades found in Noones response:", response);
       return [];
     } catch (err: any) {
       console.error("Error fetching Noones deactivated offers:", err);
-      throw new Error(`Failed to fetch Noones deactivated offers: ${err.message}`);
+      throw new Error(
+        `Failed to fetch Noones deactivated offers: ${err.message}`,
+      );
     }
   }
 
   async activateOffer(offerHash: string): Promise<any> {
     try {
       const params = new URLSearchParams();
-      params.append('offer_hash', offerHash);
-      const response = await this.makeAuthenticatedRequest("/noones/v1/offer/activate", params);
+      params.append("offer_hash", offerHash);
+      const response = await this.makeAuthenticatedRequest(
+        "/noones/v1/offer/activate",
+        params,
+      );
       console.log(`Activated Noones offer ${offerHash}:`, response);
       return response;
     } catch (error: any) {
-      throw new Error(`Failed to activate Noones offer ${offerHash}: ${error.message}`);
+      throw new Error(
+        `Failed to activate Noones offer ${offerHash}: ${error.message}`,
+      );
     }
   }
 
@@ -493,7 +521,7 @@ export class NoonesService {
       return response.count;
     } catch (error: any) {
       throw new Error(
-        `Failed to turn off all offers for account ${this.label}: ${error.message}`
+        `Failed to turn off all offers for account ${this.label}: ${error.message}`,
       );
     }
   }
@@ -504,12 +532,12 @@ export class NoonesService {
       const params = new URLSearchParams();
       params.append("offer_hash", offerHash);
       params.append("margin", margin.toString());
-  
+
       const response = await this.makeAuthenticatedRequest<{
         status: string;
         data: { success: boolean };
       }>("/noones/v1/offer/update", params);
-      
+
       // console.log(`[${this.label}] Noones update response:`, response);
       return response;
     } catch (error: any) {
@@ -527,12 +555,16 @@ export class NoonesService {
       return response.count;
     } catch (error: any) {
       throw new Error(
-        `Failed to turn off all offers for account ${this.label}: ${error.message}`
+        `Failed to turn off all offers for account ${this.label}: ${error.message}`,
       );
     }
   }
 
-  async getFeedbackStats(params: { username?: string; role?: "buyer" | "seller"; rating: number }): Promise<number> {
+  async getFeedbackStats(params: {
+    username?: string;
+    role?: "buyer" | "seller";
+    rating: number;
+  }): Promise<number> {
     try {
       const requestParams = new URLSearchParams();
       if (params.username) requestParams.append("username", params.username);
@@ -547,7 +579,7 @@ export class NoonesService {
 
       const response = await this.makeAuthenticatedRequest<any>(
         "/noones/v1/feedback/list",
-        requestParams
+        requestParams,
       );
 
       // If the response is undefined, your makeAuthenticatedRequest may have issues
@@ -556,10 +588,10 @@ export class NoonesService {
         return 0;
       }
 
-      console.log('[noonesService] Full feedback response:', response);
+      console.log("[noonesService] Full feedback response:", response);
 
       // Check different possible response structures
-      if (response.data && typeof response.data.total_count === 'number') {
+      if (response.data && typeof response.data.total_count === "number") {
         return response.data.total_count;
       } else if (response.total_count !== undefined) {
         return response.total_count;
@@ -569,18 +601,21 @@ export class NoonesService {
         return response.feedback.length;
       }
 
-      console.log('[noonesService] Unexpected response format:', response);
+      console.log("[noonesService] Unexpected response format:", response);
       return 0;
     } catch (error: any) {
-      console.error('Error in Noones getFeedbackStats:', error.message);
+      console.error("Error in Noones getFeedbackStats:", error.message);
       return 0;
     }
   }
 
   async getBitcoinPriceInNgn(): Promise<number> {
     try {
-      const response = await this.makeAuthenticatedRequest<any>("/noones/v1/currency/list", new URLSearchParams());
-      
+      const response = await this.makeAuthenticatedRequest<any>(
+        "/noones/v1/currency/list",
+        new URLSearchParams(),
+      );
+
       // Determine which property contains the currencies array
       let currencies;
       if (response.data && Array.isArray(response.data.currencies)) {
@@ -588,43 +623,48 @@ export class NoonesService {
       } else if (Array.isArray(response.currencies)) {
         currencies = response.currencies;
       } else {
-        console.error("Unexpected response structure:", JSON.stringify(response));
+        console.error(
+          "Unexpected response structure:",
+          JSON.stringify(response),
+        );
         throw new Error("Invalid response structure: currencies not found");
       }
-      
+
       // Find NGN data
       const ngnData = currencies.find((cur: any) => {
-        const currencyCode = 
-          (cur.currency && cur.currency.toLowerCase()) || 
-          (cur.code && cur.code.toLowerCase()) || 
-          (cur.symbol && cur.symbol.toLowerCase()) || 
-          '';
-        
-        return currencyCode === 'ngn' || 
-               currencyCode === 'nigeria' || 
-               currencyCode === 'naira' || 
-               (cur.name && cur.name.toLowerCase().includes('nigeria'));
+        const currencyCode =
+          (cur.currency && cur.currency.toLowerCase()) ||
+          (cur.code && cur.code.toLowerCase()) ||
+          (cur.symbol && cur.symbol.toLowerCase()) ||
+          "";
+
+        return (
+          currencyCode === "ngn" ||
+          currencyCode === "nigeria" ||
+          currencyCode === "naira" ||
+          (cur.name && cur.name.toLowerCase().includes("nigeria"))
+        );
       });
-      
+
       if (!ngnData) {
         // console.log("NGN not found in currencies list");
         throw new Error("NGN currency not found in the list");
       }
-      
+
       // console.log("Found NGN data:", JSON.stringify(ngnData));
-      
+
       // Extract the BTC rate directly from the rate object
-      if (ngnData.rate && typeof ngnData.rate === 'object') {
+      if (ngnData.rate && typeof ngnData.rate === "object") {
         const btcRate = ngnData.rate.btc;
         if (btcRate) {
           return parseFloat(btcRate);
         }
       }
-      
+
       // Fallback to calculating it
       const [btcPriceUsd, ngnRate] = await Promise.all([
-        this.getBitcoinPrice(), 
-        this.getNgnRate()
+        this.getBitcoinPrice(),
+        this.getNgnRate(),
       ]);
       return btcPriceUsd * ngnRate;
     } catch (error) {
@@ -632,7 +672,7 @@ export class NoonesService {
       throw new Error(`Failed to fetch BTC/NGN rate: ${error}`);
     }
   }
-  
+
   async getUsdtPriceInNgn(): Promise<number> {
     // USDT is pegged to USD, so we just need the NGN rate
     try {
@@ -645,8 +685,11 @@ export class NoonesService {
 
   async getNgnRate(): Promise<number> {
     try {
-      const response = await this.makeAuthenticatedRequest<any>("/noones/v1/currency/list", new URLSearchParams());
-      
+      const response = await this.makeAuthenticatedRequest<any>(
+        "/noones/v1/currency/list",
+        new URLSearchParams(),
+      );
+
       // Determine which property contains the currencies array
       let currencies;
       if (response.data && Array.isArray(response.data.currencies)) {
@@ -654,48 +697,53 @@ export class NoonesService {
       } else if (Array.isArray(response.currencies)) {
         currencies = response.currencies;
       } else {
-        console.error("Unexpected response structure:", JSON.stringify(response));
+        console.error(
+          "Unexpected response structure:",
+          JSON.stringify(response),
+        );
         throw new Error("Invalid response structure: currencies not found");
       }
-      
+
       // Find NGN data
       const ngnData = currencies.find((cur: any) => {
-        const currencyCode = 
-          (cur.currency && cur.currency.toLowerCase()) || 
-          (cur.code && cur.code.toLowerCase()) || 
-          (cur.symbol && cur.symbol.toLowerCase()) || 
-          '';
-        
-        return currencyCode === 'ngn' || 
-               currencyCode === 'nigeria' || 
-               currencyCode === 'naira' || 
-               (cur.name && cur.name.toLowerCase().includes('nigeria'));
+        const currencyCode =
+          (cur.currency && cur.currency.toLowerCase()) ||
+          (cur.code && cur.code.toLowerCase()) ||
+          (cur.symbol && cur.symbol.toLowerCase()) ||
+          "";
+
+        return (
+          currencyCode === "ngn" ||
+          currencyCode === "nigeria" ||
+          currencyCode === "naira" ||
+          (cur.name && cur.name.toLowerCase().includes("nigeria"))
+        );
       });
-      
+
       if (!ngnData) {
         // console.log("NGN not found in currencies list");
         throw new Error("NGN currency not found in the list");
       }
-      
+
       // console.log("Found NGN data:", JSON.stringify(ngnData));
-      
+
       // Extract the USDT rate from the rate object
-      if (ngnData.rate && typeof ngnData.rate === 'object') {
+      if (ngnData.rate && typeof ngnData.rate === "object") {
         // For USDT/NGN, we want the USDT rate
         const usdtRate = ngnData.rate.usdt;
         if (usdtRate) {
           return parseFloat(usdtRate);
         }
       }
-      
+
       // Fallback to USD rate if USDT is not available
-      if (ngnData.rate && typeof ngnData.rate === 'object') {
+      if (ngnData.rate && typeof ngnData.rate === "object") {
         const usdRate = ngnData.rate.usd;
         if (usdRate) {
           return parseFloat(usdRate);
         }
       }
-      
+
       console.error("USDT/USD rate not found in NGN data:", ngnData);
       throw new Error("NGN USDT/USD rate not found");
     } catch (error) {
@@ -709,14 +757,22 @@ export class NoonesService {
       const params = new URLSearchParams();
       params.append("page", page.toString());
       // Assuming Noones exposes a similar endpoint as Paxful for completed trades.
-      const response = await this.makeAuthenticatedRequest<any>("/noones/v1/trade/completed", params);
+      const response = await this.makeAuthenticatedRequest<any>(
+        "/noones/v1/trade/completed",
+        params,
+      );
       if (!response.trades) {
-        console.warn(`[${this.label}] No completed trades data found:`, response);
+        console.warn(
+          `[${this.label}] No completed trades data found:`,
+          response,
+        );
         return [];
       }
       return response.trades;
     } catch (error: any) {
-      throw new Error(`Failed to list completed trades for account ${this.label}: ${error.message}`);
+      throw new Error(
+        `Failed to list completed trades for account ${this.label}: ${error.message}`,
+      );
     }
   }
 
@@ -725,48 +781,54 @@ export class NoonesService {
       // Create params with the trade hash
       const params = new URLSearchParams();
       params.append("trade_hash", tradeHash);
-      
+
       // Make the API request
       const response = await this.makeAuthenticatedRequest<{
         success: boolean;
         error?: { code: string; message: string };
       }>("/noones/v1/trade/cancel", params);
-  
+
       // Check for API errors in the response
       if (response.error) {
-        throw new Error(response.error.message || 'Noones API returned error');
+        throw new Error(response.error.message || "Noones API returned error");
       }
-  
+
       // Check for success indicator in response
       if (response.data && response.data.success === true) {
         return true;
       } else if (response.success === true) {
         return true;
       }
-  
+
       // If we couldn't confirm success, throw an error
-      throw new Error('Trade cancellation failed - API did not confirm success');
+      throw new Error(
+        "Trade cancellation failed - API did not confirm success",
+      );
     } catch (error: any) {
       // Handle HTTP errors
       if (error.response) {
         // Handle 404 - Trade not found
         if (error.response.status === 404) {
-          throw new Error(`Trade ${tradeHash} not found - may have expired or been canceled already`);
+          throw new Error(
+            `Trade ${tradeHash} not found - may have expired or been canceled already`,
+          );
         }
-        
+
         // Handle rate limiting
         if (error.response.status === 429) {
-          throw new Error('Too many requests - please try again later');
+          throw new Error("Too many requests - please try again later");
         }
-        
+
         // Handle other HTTP errors
         const errorData = error.response.data?.error || error.response.data;
-        throw new Error(errorData?.message || `HTTP ${error.response.status} error`);
+        throw new Error(
+          errorData?.message || `HTTP ${error.response.status} error`,
+        );
       }
-      
+
       // Re-throw with context
       throw new Error(
-        `Failed to cancel trade for account ${this.label}: ${error.message}`
+        `Failed to cancel trade for account ${this.label}: ${error.message}`,
       );
     }
   }
@@ -811,11 +873,11 @@ export class NoonesService {
       requestParams.append("currency", currency);
       requestParams.append(
         "offer_cap[range_max]",
-        offer_cap.range_max.toString()
+        offer_cap.range_max.toString(),
       );
       requestParams.append(
         "offer_cap[range_min]",
-        offer_cap.range_min.toString()
+        offer_cap.range_min.toString(),
       );
       requestParams.append("offer_terms", offer_terms);
       requestParams.append("payment_method", payment_method);
@@ -841,7 +903,7 @@ export class NoonesService {
       if (custom_rate_active !== undefined)
         requestParams.append(
           "custom_rate_active",
-          custom_rate_active.toString()
+          custom_rate_active.toString(),
         );
       if (payment_method_group)
         requestParams.append("payment_method_group", payment_method_group);
@@ -850,43 +912,43 @@ export class NoonesService {
       if (bank_reference_message)
         requestParams.append(
           "bank_reference_message",
-          JSON.stringify(bank_reference_message)
+          JSON.stringify(bank_reference_message),
         );
       if (show_only_trusted_user !== undefined)
         requestParams.append(
           "show_only_trusted_user",
-          show_only_trusted_user.toString()
+          show_only_trusted_user.toString(),
         );
       if (country_limitation_list)
         requestParams.append(
           "country_limitation_list",
-          country_limitation_list
+          country_limitation_list,
         );
       if (country_limitation_type)
         requestParams.append(
           "country_limitation_type",
-          country_limitation_type
+          country_limitation_type,
         );
       if (require_min_past_trades)
         requestParams.append(
           "require_min_past_trades",
-          require_min_past_trades.toString()
+          require_min_past_trades.toString(),
         );
       if (custom_rate_fiat_currency)
         requestParams.append(
           "custom_rate_fiat_currency",
-          custom_rate_fiat_currency
+          custom_rate_fiat_currency,
         );
       if (auto_share_vendor_payment_account !== undefined)
         requestParams.append(
           "auto_share_vendor_payment_account",
-          auto_share_vendor_payment_account.toString()
+          auto_share_vendor_payment_account.toString(),
         );
 
       // Make the request to create the offer
       const response = await this.makeAuthenticatedRequest<any>(
         "/noones/v1/offer/create",
-        requestParams
+        requestParams,
       );
       // console.log(response);
       if (response?.offer_hash) {

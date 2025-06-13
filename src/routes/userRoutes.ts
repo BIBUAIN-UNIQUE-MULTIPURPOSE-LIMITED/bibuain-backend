@@ -31,7 +31,7 @@ router.post(
       .withMessage("Password must be at least 6 characters"),
   ],
   validateRequest,
-  login
+  login,
 );
 // router.put("/clock-status", updateClockStatus);
 
@@ -44,7 +44,7 @@ router.post("/enable-2fa", authenticate, enableTwoFa);
 router.post(
   "/verify-2fa",
   [body("twoFaCode").notEmpty().withMessage("2FA code is required")],
-  verifyTwoFa
+  verifyTwoFa,
 );
 
 router.post("/forget-password", forgotPassword);
@@ -52,7 +52,7 @@ router.post("/forget-password", forgotPassword);
 router.post(
   "/verify-email",
   [body("code").notEmpty().withMessage("Verification code is required")],
-  verifyEmail
+  verifyEmail,
 );
 
 router.post(
@@ -63,7 +63,7 @@ router.post(
       .isLength({ min: 8 })
       .withMessage("Password must be at least 8 characters"),
   ],
-  resetPassword
+  resetPassword,
 );
 
 router.get("/", getAllUsers);
@@ -74,7 +74,7 @@ router.get(
   "/:id",
   [param("id").isUUID().withMessage("Invalid user ID. It must be a UUID")],
   validateRequest,
-  getSingleUser
+  getSingleUser,
 );
 
 router.put("/update", authenticate, uploadSingleFile, editUserDetails);

@@ -3,7 +3,7 @@ import {
   getUserNotifications,
   markAllNotificationsAsCompleted,
   markAllNotificationsAsRead,
-  createNotificationHandler
+  createNotificationHandler,
 } from "../controllers/notificationController";
 import express from "express";
 import { authenticate } from "../middlewares/authenticate";

@@ -24,7 +24,7 @@ router.post(
   ],
   validateRequest,
   authenticate,
-  createChat
+  createChat,
 );
 
 // Get all chats for the authenticated user
@@ -36,7 +36,7 @@ router.get(
   [param("chatId").isUUID().withMessage("Invalid chat ID.")],
   validateRequest,
   authenticate,
-  getChat
+  getChat,
 );
 
 // Delete a chat
@@ -45,7 +45,7 @@ router.delete(
   [param("chatId").isUUID().withMessage("Invalid chat ID.")],
   validateRequest,
   authenticate,
-  deleteChat
+  deleteChat,
 );
 
 export default router;
