@@ -1,14 +1,14 @@
 import { Router } from "express";
-import { body, param } from "express-validator";
-import { authenticate } from "../middlewares/authenticate";
-import validateRequest from "../middlewares/validateRequest";
+import { param } from "express-validator";
+import { uploadSingleFile } from "../config/multer";
 import {
   createMessage,
-  getMessages,
   deleteMessage,
+  getMessages,
   markMessageAsSeen,
 } from "../controllers/messagesController";
-import { uploadMultipleFiles, uploadSingleFile } from "../config/multer";
+import { authenticate } from "../middlewares/authenticate";
+import validateRequest from "../middlewares/validateRequest";
 
 const router: any = Router();
 
@@ -17,7 +17,7 @@ router.post(
   validateRequest,
   authenticate,
   uploadSingleFile,
-  createMessage
+  createMessage,
 );
 
 // Get all messages for a chat
@@ -26,7 +26,7 @@ router.get(
   [param("chatId").isUUID().withMessage("Invalid chat ID.")],
   validateRequest,
   authenticate,
-  getMessages
+  getMessages,
 );
 
 // Delete a specific message by ID
@@ -38,7 +38,7 @@ router.delete(
   ],
   validateRequest,
   authenticate,
-  deleteMessage
+  deleteMessage,
 );
 
 // Mark a message as seen
@@ -50,7 +50,7 @@ router.put(
   ],
   validateRequest,
   authenticate,
-  markMessageAsSeen
+  markMessageAsSeen,
 );
 
 export default router;

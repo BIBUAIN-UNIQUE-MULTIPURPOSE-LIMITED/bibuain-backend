@@ -1,8 +1,8 @@
 import cron from "node-cron";
-import { In, Between } from "typeorm";
+import { Between, In } from "typeorm";
 import dbConnect from "../config/database";
+import { Shift, ShiftEndType, ShiftStatus, ShiftType } from "../models/shift";
 import { User, UserType } from "../models/user";
-import { Shift, ShiftType, ShiftStatus, ShiftEndType } from "../models/shift";
 
 // Cron schedules for testing / production
 const SHIFT_TIMES = {
@@ -59,7 +59,7 @@ async function closeActiveShifts() {
   for (const shift of activeShifts) {
     if (!isShiftPeriodOver(shift.shiftType, now)) {
       console.log(
-        `Shift for user ${shift.user?.id} (${shift.shiftType}) is still within its period. Skipping closure.`
+        `Shift for user ${shift.user?.id} (${shift.shiftType}) is still within its period. Skipping closure.`,
       );
       continue;
     }
@@ -77,7 +77,7 @@ async function closeActiveShifts() {
       } else {
         shift.totalWorkDuration = 0;
         console.warn(
-          `Warning: Shift for user ${shift.user?.id} has no clock-in time.`
+          `Warning: Shift for user ${shift.user?.id} has no clock-in time.`,
         );
       }
 
@@ -114,7 +114,7 @@ async function createNewShifts(shiftType: ShiftType) {
     now.getDate(),
     0,
     0,
-    0
+    0,
   );
   const endOfDay = new Date(
     now.getFullYear(),
@@ -122,7 +122,7 @@ async function createNewShifts(shiftType: ShiftType) {
     now.getDate(),
     23,
     59,
-    59
+    59,
   );
 
   for (const user of users) {
@@ -138,7 +138,7 @@ async function createNewShifts(shiftType: ShiftType) {
 
       if (existingShift) {
         console.log(
-          `Skipping user ${user.id}: A ${shiftType} shift already exists and is still in progress.`
+          `Skipping user ${user.id}: A ${shiftType} shift already exists and is still in progress.`,
         );
         continue;
       }
@@ -184,7 +184,7 @@ const shiftCrons = Object.entries(SHIFT_TIMES).map(([shiftType, cronTime]) => {
     () => handleShiftChange(shiftType as ShiftType),
     {
       timezone: "Asia/Karachi",
-    }
+    },
   );
 });
 

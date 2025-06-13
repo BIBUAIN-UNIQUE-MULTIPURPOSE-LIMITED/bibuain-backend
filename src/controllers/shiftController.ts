@@ -1,13 +1,12 @@
-import { Request, Response, NextFunction, RequestHandler } from "express";
-import dbConnect from "../config/database";
-import { UserRequest } from "../middlewares/authenticate";
-import { Shift, ShiftType, ShiftStatus, ShiftEndType } from "../models/shift";
-import { User, UserType } from "../models/user";
-import ErrorHandler from "../utils/errorHandler";
-import { io } from "../server";
+import type { NextFunction, RequestHandler, Response } from "express";
 import { Between, In } from "typeorm";
+import dbConnect from "../config/database";
+import type { UserRequest } from "../middlewares/authenticate";
 import { Bank, BankTag } from "../models/bank";
-
+import { Shift, ShiftEndType, ShiftStatus, ShiftType } from "../models/shift";
+import { User, UserType } from "../models/user";
+import { io } from "../server";
+import ErrorHandler from "../utils/errorHandler";
 
 const SHIFT_TIMES = {
   [ShiftType.MORNING]: { start: "08:00", end: "15:00" },
@@ -15,21 +14,34 @@ const SHIFT_TIMES = {
   [ShiftType.NIGHT]: { start: "21:00", end: "08:00" },
 };
 
+/*
+ * Utility function to determine shift type based on current time
+ * Returns ShiftType.MORNING, ShiftType.AFTERNOON, or ShiftType.NIGHT
+ */
 const getShiftTypeFromTime = (date: Date): ShiftType => {
   const currentTime = date.getHours() * 100 + date.getMinutes();
   if (currentTime >= 800 && currentTime < 1500) {
     return ShiftType.MORNING;
   } else if (currentTime >= 1500 && currentTime < 2100) {
     return ShiftType.AFTERNOON;
-  } else {
+  } else if (
+    (currentTime >= 2100 && currentTime <= 2359) ||
+    (currentTime >= 0 && currentTime < 800)
+  ) {
     return ShiftType.NIGHT;
   }
+  throw new ErrorHandler("Invalid time for shift type", 400);
 };
 
+/*
+ * Clock in handler
+ * Creates or updates a shift record for the user
+ * Determines shift type dynamically based on current time
+ */
 export const clockIn: RequestHandler = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const userId = req.user?.id;
@@ -41,11 +53,9 @@ export const clockIn: RequestHandler = async (
     const user = await userRepo.findOne({ where: { id: userId } });
     if (!user) throw new ErrorHandler("User not found", 404);
 
-    // Determine shift type dynamically
     const now = new Date();
     const shiftType = getShiftTypeFromTime(now);
 
-    // Check if an active shift already exists for this user and shift type
     let currentShift = await shiftRepo.findOne({
       where: {
         user: { id: userId },
@@ -69,14 +79,18 @@ export const clockIn: RequestHandler = async (
     currentShift.clockInTime = now;
 
     // Determine scheduled start time for the shift from SHIFT_TIMES
-    const [startHour, startMinute] = SHIFT_TIMES[shiftType].start.split(":").map(Number);
+    const [startHour, startMinute] = SHIFT_TIMES[shiftType].start
+      .split(":")
+      .map(Number);
     const scheduledStart = new Date(now);
     scheduledStart.setHours(startHour, startMinute, 0, 0);
 
     // Calculate if the user is late and by how many minutes
     if (now > scheduledStart) {
       currentShift.isLateClockIn = true;
-      currentShift.lateMinutes = Math.floor((now.getTime() - scheduledStart.getTime()) / 60000);
+      currentShift.lateMinutes = Math.floor(
+        (now.getTime() - scheduledStart.getTime()) / 60000,
+      );
     } else {
       currentShift.isLateClockIn = false;
       currentShift.lateMinutes = 0;
@@ -101,26 +115,36 @@ export const clockIn: RequestHandler = async (
   }
 };
 
-export const updateBankStatusDuringShift = async (bankId: string, amountUsed: number) => {
+/*
+ * Update bank status during a shift
+ * Adjusts the bank's funds and tag based on usage
+ */
+export const updateBankStatusDuringShift = async (
+  bankId: string,
+  amountUsed: number,
+) => {
   const bankRepo = dbConnect.getRepository(Bank);
   const bank = await bankRepo.findOne({ where: { id: bankId } });
-  
+
   if (!bank) return;
 
   const remaining = bank.funds - amountUsed;
   bank.funds = Math.max(0, remaining);
-  
+
   // Update status based on remaining funds
   bank.tag = bank.funds > 0 ? BankTag.USED : BankTag.ROLLOVER;
-  
+
   await bankRepo.save(bank);
 };
 
-// Update the clockOut function to handle bank status changes
+/*
+ * Clock out handler
+ * Ends the user's shift and updates the bank status if applicable
+ */
 export const clockOut: RequestHandler = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   const userId = req.user?.id;
   if (!userId) {
@@ -139,9 +163,9 @@ export const clockOut: RequestHandler = async (
       return;
     }
 
-    let activeShift = await shiftRepo.findOne({
+    const activeShift = await shiftRepo.findOne({
       where: { user: { id: userId }, status: ShiftStatus.ACTIVE },
-      relations: ["bank"]
+      relations: ["bank"],
     });
 
     if (!activeShift) {
@@ -154,7 +178,9 @@ export const clockOut: RequestHandler = async (
     try {
       // Update bank status if there's an associated bank
       if (activeShift.bank) {
-        const bank = await bankRepo.findOne({ where: { id: activeShift.bank.id } });
+        const bank = await bankRepo.findOne({
+          where: { id: activeShift.bank.id },
+        });
         if (bank) {
           // Change status based on remaining funds
           bank.tag = bank.funds > 0 ? BankTag.FUNDED : BankTag.ROLLOVER;
@@ -163,17 +189,16 @@ export const clockOut: RequestHandler = async (
         }
       }
 
-      // Gracefully close the shift
       activeShift.clockOutTime = now;
       activeShift.isClockedIn = false;
       activeShift.totalWorkDuration += calculateWorkDuration(
         activeShift.clockInTime,
         now,
-        activeShift.breaks
+        activeShift.breaks,
       );
       activeShift.overtimeMinutes = calculateOvertime(
         activeShift.shiftType,
-        activeShift.totalWorkDuration
+        activeShift.totalWorkDuration,
       );
       activeShift.status = ShiftStatus.ENDED;
 
@@ -194,11 +219,11 @@ export const clockOut: RequestHandler = async (
     } catch (shiftError) {
       console.error("Error updating shift:", shiftError);
       await userRepo.update(userId, { clockedIn: false });
-      
+
       activeShift.status = ShiftStatus.FORCE_CLOSED;
       activeShift.clockOutTime = now;
       activeShift.isClockedIn = false;
-      
+
       await shiftRepo.save(activeShift);
 
       next(new ErrorHandler("Unexpected error. Shift forcefully ended.", 500));
@@ -207,22 +232,24 @@ export const clockOut: RequestHandler = async (
     console.error("Unexpected error during clock-out:", error);
     try {
       await userRepo.update(userId, { clockedIn: false });
-      
-      let activeShift = await shiftRepo.findOne({
+
+      const activeShift = await shiftRepo.findOne({
         where: { user: { id: userId }, status: ShiftStatus.ACTIVE },
-        relations: ["bank"]
+        relations: ["bank"],
       });
       if (activeShift) {
         // Update bank status if shift is force closed
         if (activeShift.bank) {
-          const bank = await bankRepo.findOne({ where: { id: activeShift.bank.id } });
+          const bank = await bankRepo.findOne({
+            where: { id: activeShift.bank.id },
+          });
           if (bank) {
             bank.tag = bank.funds > 0 ? BankTag.FUNDED : BankTag.ROLLOVER;
             bank.shift = undefined;
             await bankRepo.save(bank);
           }
         }
-        
+
         activeShift.status = ShiftStatus.FORCE_CLOSED;
         activeShift.clockOutTime = new Date();
         activeShift.isClockedIn = false;
@@ -231,14 +258,23 @@ export const clockOut: RequestHandler = async (
     } catch (cleanupError) {
       console.error("Error during shift force closure:", cleanupError);
     }
-    next(new ErrorHandler("Critical error occurred. Shift forcefully closed.", 500));
+    next(
+      new ErrorHandler(
+        "Critical error occurred. Shift forcefully closed.",
+        500,
+      ),
+    );
   }
-}
+};
 
+/*
+ * Start a break during an active shift
+ * Updates the shift status to ON_BREAK and records the break start time
+ */
 export const startBreak: RequestHandler = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const userId = req.user?.id;
@@ -263,9 +299,6 @@ export const startBreak: RequestHandler = async (
     activeShift.breaks = [...(activeShift.breaks || []), newBreak];
     activeShift.status = ShiftStatus.ON_BREAK;
     await shiftRepo.save(activeShift);
-    
-    // DO NOT update user's clockedIn status - they're still clocked in, just on break
-    // await userRepo.update(userId, { clockedIn: false }); <-- REMOVE THIS
 
     io.emit("breakUpdate", {
       userId,
@@ -283,10 +316,14 @@ export const startBreak: RequestHandler = async (
   }
 };
 
+/*
+ * End the current break during an active shift
+ * Updates the last break's end time and duration, then resumes the shift
+ */
 export const endBreak: RequestHandler = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const userId = req.user?.id;
@@ -308,15 +345,12 @@ export const endBreak: RequestHandler = async (
     if (currentBreak && !currentBreak.endTime) {
       currentBreak.endTime = now;
       currentBreak.duration = Math.floor(
-        (now.getTime() - new Date(currentBreak.startTime).getTime()) / 60000
+        (now.getTime() - new Date(currentBreak.startTime).getTime()) / 60000,
       );
     }
 
     activeShift.status = ShiftStatus.ACTIVE;
     await shiftRepo.save(activeShift);
-    
-    // DO NOT need to update clockedIn status here - user remains clocked in
-    // await userRepo.update(userId, { clockedIn: true }); <-- REMOVE THIS IF IT EXISTS
 
     io.emit("breakUpdate", {
       userId,
@@ -334,10 +368,15 @@ export const endBreak: RequestHandler = async (
   }
 };
 
+/*
+ * Get shift metrics for a user
+ * Returns total shifts, work duration, break duration, overtime, late minutes, and shift types
+ * Optionally filters by date range
+ */
 export const getShiftMetrics: RequestHandler = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const userId = req.params.userId;
@@ -345,13 +384,16 @@ export const getShiftMetrics: RequestHandler = async (
 
     const { startDate, endDate } = req.query;
     const shiftRepo = dbConnect.getRepository(Shift);
-    
+
     // Build the where condition
     let whereCondition: any = { user: { id: userId } };
     if (startDate && endDate) {
       whereCondition = {
         ...whereCondition,
-        createdAt: Between(new Date(startDate as string), new Date(endDate as string))
+        createdAt: Between(
+          new Date(startDate as string),
+          new Date(endDate as string),
+        ),
       };
     }
 
@@ -364,7 +406,7 @@ export const getShiftMetrics: RequestHandler = async (
       const breakDurations =
         shift.breaks?.reduce(
           (sum, breakItem) => sum + (breakItem.duration || 0),
-          0
+          0,
         ) || 0;
       return acc + breakDurations;
     }, 0);
@@ -373,24 +415,24 @@ export const getShiftMetrics: RequestHandler = async (
       totalShifts: shifts.length,
       totalWorkDuration: shifts.reduce(
         (acc, shift) => acc + (shift.totalWorkDuration || 0),
-        0
+        0,
       ),
       totalBreakDuration,
       totalOvertimeMinutes: shifts.reduce(
         (acc, shift) => acc + (shift.overtimeMinutes || 0),
-        0
+        0,
       ),
       totalLateMinutes: shifts.reduce(
         (acc, shift) => acc + (shift.lateMinutes || 0),
-        0
+        0,
       ),
       lateClockIns: shifts.filter((shift) => shift.isLateClockIn).length,
       shiftsByType: {
         [ShiftType.MORNING]: shifts.filter(
-          (s) => s.shiftType === ShiftType.MORNING
+          (s) => s.shiftType === ShiftType.MORNING,
         ).length,
         [ShiftType.AFTERNOON]: shifts.filter(
-          (s) => s.shiftType === ShiftType.AFTERNOON
+          (s) => s.shiftType === ShiftType.AFTERNOON,
         ).length,
         [ShiftType.NIGHT]: shifts.filter((s) => s.shiftType === ShiftType.NIGHT)
           .length,
@@ -406,10 +448,14 @@ export const getShiftMetrics: RequestHandler = async (
   }
 };
 
+/*
+ * Force end a shift by an admin
+ * Updates the shift status, clock out time, and user clockedIn status
+ */
 export const forceEndShift: RequestHandler = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { shiftId } = req.params;
@@ -422,7 +468,7 @@ export const forceEndShift: RequestHandler = async (
 
     const shiftRepo = dbConnect.getRepository(Shift);
     const userRepo = dbConnect.getRepository(User);
-    
+
     const shift = await shiftRepo.findOne({
       where: { id: shiftId },
       relations: ["user"],
@@ -431,11 +477,9 @@ export const forceEndShift: RequestHandler = async (
     if (!shift) throw new ErrorHandler("Shift not found", 404);
 
     const now = new Date();
-    
-    // Update user's clockedIn status first
+
     await userRepo.update(shift.user.id, { clockedIn: false });
-    
-    // Then update the shift
+
     shift.status = ShiftStatus.FORCE_CLOSED;
     shift.shiftEndType = ShiftEndType.ADMIN_FORCE_CLOSE;
     shift.clockOutTime = now;
@@ -446,7 +490,7 @@ export const forceEndShift: RequestHandler = async (
     shift.totalWorkDuration = calculateWorkDuration(
       shift.clockInTime,
       now,
-      shift.breaks
+      shift.breaks,
     );
 
     await shiftRepo.save(shift);
@@ -467,10 +511,14 @@ export const forceEndShift: RequestHandler = async (
   }
 };
 
+/*
+ * Get the current shift for a user
+ * Returns the active shift or null if not clocked in
+ */
 export const getCurrentShift = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const userId = req.user?.id;
@@ -482,20 +530,17 @@ export const getCurrentShift = async (
     const userRepo = dbConnect.getRepository(User);
     const shiftRepo = dbConnect.getRepository(Shift);
 
-    // load user record
     const user = await userRepo.findOne({ where: { id: userId } });
     const isUserClockedIn = user?.clockedIn || false;
 
-    // load shift (include bank relation only)
     const currentShift = await shiftRepo.findOne({
       where: {
         user: { id: userId },
         status: In([ShiftStatus.ACTIVE, ShiftStatus.ON_BREAK]),
       },
-      relations: ["user","bank"],
+      relations: ["user", "bank"],
     });
 
-    // if user.clockedIn but no shift exists, correct it
     if (isUserClockedIn && !currentShift) {
       await userRepo.update(userId, { clockedIn: false });
       return res.json({
@@ -527,7 +572,6 @@ export const getCurrentShift = async (
       });
     }
 
-    // finally return the live shift (breaks is just JSON)
     return res.json({
       success: true,
       message: "Current shift retrieved successfully",
@@ -545,22 +589,26 @@ export const getCurrentShift = async (
   }
 };
 
+/*
+ * Calculate the total work duration excluding breaks
+ * Returns the duration in minutes
+ */
 const calculateWorkDuration = (
   clockIn: Date,
   clockOut: Date,
-  breaks: any
+  breaks: any,
 ): number => {
   const totalMs = clockOut.getTime() - clockIn.getTime();
   const breakTimeMs = breaks.reduce(
     (acc: any, b: any) => acc + (b.duration ? b.duration * 60000 : 0),
-    0
+    0,
   );
   return Math.max(0, (totalMs - breakTimeMs) / 60000);
 };
 
 const calculateOvertime = (
   shiftType: Shift["shiftType"],
-  totalWorkDuration: number
+  totalWorkDuration: number,
 ): number => {
   const standardDurations = {
     morning: 7 * 60,

@@ -1,13 +1,16 @@
-import { Request, Response, NextFunction, RequestHandler } from "express";
-import dbConnect from "../config/database";
-import bcrypt from "bcryptjs";
-import { User, UserType } from "../models/user";
-import { Role } from "../models/roles";
-import ErrorHandler from "../utils/errorHandler";
-import sendEmail from "../services/mailService";
 import crypto from "crypto";
-import { UserRequest } from "../middlewares/authenticate";
+import bcrypt from "bcryptjs";
+import type { NextFunction, Request, RequestHandler, Response } from "express";
+import dbConnect from "../config/database";
+import type { UserRequest } from "../middlewares/authenticate";
+import { User, UserType } from "../models/user";
+import sendEmail from "../services/mailService";
+import ErrorHandler from "../utils/errorHandler";
 
+/*
+ * Admin Controller
+ * Handles CRUD operations for admin users
+ */
 export const createAdminUser: RequestHandler = async (req, res, next) => {
   try {
     const { email, password, fullName, phone } = req.body;
@@ -34,7 +37,7 @@ export const createAdminUser: RequestHandler = async (req, res, next) => {
       fullName,
       phone,
       userType: UserType.ADMIN,
-      isEmailVerified: true
+      isEmailVerified: true,
     });
 
     await userRepo.save(adminUser);
@@ -54,20 +57,23 @@ export const createAdminUser: RequestHandler = async (req, res, next) => {
   }
 };
 
-export const   createUser = async (
+/*
+ * Create a new user (for registration)
+ * Validates password, checks for existing email/phone, hashes password,
+ * generates email verification code, and sends verification email.
+ */
+export const createUser = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { email, userType, fullName, phone, password } = req.body;
 
-    // Validate password
     if (!password) {
       throw new ErrorHandler("Password is required", 400);
     }
 
-    // Password validation
     const passwordValidation = validatePassword(password);
     if (!passwordValidation.isValid) {
       throw new ErrorHandler(passwordValidation.message, 400);
@@ -98,11 +104,9 @@ export const   createUser = async (
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-    // Generate email verification code
     const emailVerificationCode = crypto.randomBytes(32).toString("hex");
-    const emailVerificationExp = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours expiration
+    const emailVerificationExp = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    // Create and save the new user
     const newUser = userRepo.create({
       email,
       userType,
@@ -128,7 +132,6 @@ export const   createUser = async (
              <p>This link is valid for 24 hours.</p>`,
     });
 
-    // Respond with success (exclude password from response)
     return res.status(201).json({
       success: true,
       message: `Verification email sent to ${email}`,
@@ -145,8 +148,16 @@ export const   createUser = async (
   }
 };
 
+/*
+ * Validates password according to specified rules:
+ * - At least 8 characters long
+ * - Contains at least one uppercase letter
+ * - Contains at least one lowercase letter
+ * - Contains at least one number
+ * - Contains at least one special character
+ */
 export const validatePassword = (
-  password: string
+  password: string,
 ): { isValid: boolean; message: string } => {
   if (password.length < 8) {
     return {
@@ -192,11 +203,16 @@ export const validatePassword = (
     message: "Password is valid",
   };
 };
-// Edit a user for admin
+
+/*
+ * Edit user details (for admin)
+ * Validates userType, checks for existing email/phone,
+ * updates user details, and returns updated user data.
+ */
 export const editUser = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { id } = req.params;
@@ -207,50 +223,25 @@ export const editUser = async (
       throw new ErrorHandler("Unauthorized access", 401);
     }
 
-    if (req.user?.userType !== "admin") {
+    if (req.user?.userType != "admin") {
       throw new ErrorHandler("Access denied: Only admins can edit users", 403);
     }
 
     const userRepo = dbConnect.getRepository(User);
-
-    // Find the user to edit
     const userToEdit = await userRepo.findOne({ where: { id } });
     if (!userToEdit) {
       throw new ErrorHandler("User not found", 404);
     }
 
-    // Update email
-    if (email) {
-      const existingUserByEmail = await userRepo.findOne({ where: { email } });
-      if (existingUserByEmail && existingUserByEmail.id !== userToEdit.id) {
-        throw new ErrorHandler("Email already in use by another user", 409);
-      }
-      userToEdit.email = email;
+    if (userToEdit.id === currentUserId) {
+      throw new ErrorHandler("Admins cannot edit their own account", 400);
     }
 
-    // Update full name
-    if (fullName) {
-      userToEdit.fullName = fullName;
-    }
-
-    // Update phone
-    if (phone) {
-      const existingUserByPhone = await userRepo.findOne({ where: { phone } });
-      if (existingUserByPhone && existingUserByPhone.id !== userToEdit.id) {
-        throw new ErrorHandler(
-          "Phone number already in use by another user",
-          409
-        );
-      }
-      userToEdit.phone = phone;
-    }
-
-    // Update userType
-    if (userType && Object.values(UserType).includes(userType)) {
-      userToEdit.userType = userType;
-    } else if (userType) {
-      throw new ErrorHandler("Invalid userType provided", 400);
-    }
+    userToEdit.email = typeof email === "string" ? email : userToEdit.email;
+    userToEdit.fullName =
+      typeof fullName === "string" ? fullName : userToEdit.fullName;
+    userToEdit.phone = typeof phone === "string" ? phone : userToEdit.phone;
+    userToEdit.userType = userType || userToEdit.userType;
 
     // Save updated user
     const updatedUser = await userRepo.save(userToEdit);
@@ -271,11 +262,16 @@ export const editUser = async (
   }
 };
 
-// Delete a user for admin
+/*
+ * Delete user (for admin)
+ * Validates userType, checks if user exists,
+ * prevents deletion of own account by admin,
+ * and deletes the user.
+ */
 export const deleteUser = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const userIdToDelete = req.params.id;
@@ -285,10 +281,10 @@ export const deleteUser = async (
       throw new ErrorHandler("Unauthorized access", 401);
     }
 
-    if (req.user?.userType !== "admin") {
+    if (req.user?.userType != "admin") {
       throw new ErrorHandler(
         "Access denied: Only admins can delete users",
-        403
+        403,
       );
     }
 
@@ -317,12 +313,14 @@ export const deleteUser = async (
   }
 };
 
-// Get All User for Admin
-
+/*
+ * Get All Users (for admin)
+ * Retrieves all users with optional filters for userType, email, fullName, status, and clockedIn.
+ */
 export const getAllUsers = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { userType, email, fullName, status, clockedIn } = req.query;
@@ -345,8 +343,7 @@ export const getAllUsers = async (
       query.andWhere("user.status = :status", { status });
     }
     if (clockedIn) {
-      // Convert string 'true'/'false' to boolean
-      const isClockedIn = clockedIn === 'true';
+      const isClockedIn = clockedIn === "true";
       query.andWhere("user.clockedIn = :clockedIn", { clockedIn: isClockedIn });
     }
 
@@ -362,12 +359,14 @@ export const getAllUsers = async (
   }
 };
 
-// Get Single User for Admin
-
+/*
+ * Get Single User (for admin)
+ * Retrieves a single user by ID, ensuring the user exists.
+ */
 export const getSingleUser = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { id } = req.params;

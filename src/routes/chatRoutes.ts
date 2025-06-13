@@ -1,13 +1,13 @@
 import { Router } from "express";
 import { body, param } from "express-validator";
-import { authenticate } from "../middlewares/authenticate";
-import validateRequest from "../middlewares/validateRequest";
 import {
   createChat,
-  getChats,
-  getChat,
   deleteChat,
+  getChat,
+  getChats,
 } from "../controllers/chatsController";
+import { authenticate } from "../middlewares/authenticate";
+import validateRequest from "../middlewares/validateRequest";
 
 const router: any = Router();
 
@@ -24,7 +24,7 @@ router.post(
   ],
   validateRequest,
   authenticate,
-  createChat
+  createChat,
 );
 
 // Get all chats for the authenticated user
@@ -36,7 +36,7 @@ router.get(
   [param("chatId").isUUID().withMessage("Invalid chat ID.")],
   validateRequest,
   authenticate,
-  getChat
+  getChat,
 );
 
 // Delete a chat
@@ -45,7 +45,7 @@ router.delete(
   [param("chatId").isUUID().withMessage("Invalid chat ID.")],
   validateRequest,
   authenticate,
-  deleteChat
+  deleteChat,
 );
 
 export default router;

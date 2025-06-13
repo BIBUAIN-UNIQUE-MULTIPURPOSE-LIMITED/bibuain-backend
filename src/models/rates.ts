@@ -1,8 +1,8 @@
 import {
-  Entity,
-  PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  Entity,
+  PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from "typeorm";
 
@@ -34,15 +34,14 @@ export class Rates {
   btcngnrate!: number;
 
   @Column({ type: "jsonb", nullable: true })
-  platformRates?: Record<string, any>;
+  platformRates?: Record<string, unknown>;
 
   @Column({
     type: "jsonb",
     nullable: true,
-    default: {}
+    default: {},
   })
   platformCostPrices?: Record<string, number>;
-  
 
   @Column({ type: "numeric", precision: 50, scale: 8, nullable: true })
   paxfulRate?: string;

@@ -1,24 +1,21 @@
 import { Router } from "express";
-import { body, param, query } from "express-validator";
+import { body, param } from "express-validator";
+import { uploadSingleFile } from "../config/multer";
 import {
+  changePassword,
+  editUserDetails,
+  enableTwoFa,
+  forgotPassword,
+  getCurrentUser,
   login,
   logout,
-  enableTwoFa,
-  verifyTwoFa,
-  requestEmailVerification,
-  verifyEmail,
-  requestPasswordReset,
   resetPassword,
-  getCurrentUser,
-  editUserDetails,
-  changePassword,
-  forgotPassword,
-  // updateClockStatus,
+  verifyEmail,
+  verifyTwoFa,
 } from "../controllers/AuthController";
+import { getAllUsers, getSingleUser } from "../controllers/adminController";
 import { authenticate } from "../middlewares/authenticate";
 import validateRequest from "../middlewares/validateRequest";
-import { getAllUsers, getSingleUser } from "../controllers/adminController";
-import { uploadSingleFile } from "../config/multer";
 
 const router: any = Router();
 
@@ -31,9 +28,8 @@ router.post(
       .withMessage("Password must be at least 6 characters"),
   ],
   validateRequest,
-  login
+  login,
 );
-// router.put("/clock-status", updateClockStatus);
 
 router.get("/me", authenticate, getCurrentUser);
 
@@ -44,7 +40,7 @@ router.post("/enable-2fa", authenticate, enableTwoFa);
 router.post(
   "/verify-2fa",
   [body("twoFaCode").notEmpty().withMessage("2FA code is required")],
-  verifyTwoFa
+  verifyTwoFa,
 );
 
 router.post("/forget-password", forgotPassword);
@@ -52,7 +48,7 @@ router.post("/forget-password", forgotPassword);
 router.post(
   "/verify-email",
   [body("code").notEmpty().withMessage("Verification code is required")],
-  verifyEmail
+  verifyEmail,
 );
 
 router.post(
@@ -63,7 +59,7 @@ router.post(
       .isLength({ min: 8 })
       .withMessage("Password must be at least 8 characters"),
   ],
-  resetPassword
+  resetPassword,
 );
 
 router.get("/", getAllUsers);
@@ -74,7 +70,7 @@ router.get(
   "/:id",
   [param("id").isUUID().withMessage("Invalid user ID. It must be a UUID")],
   validateRequest,
-  getSingleUser
+  getSingleUser,
 );
 
 router.put("/update", authenticate, uploadSingleFile, editUserDetails);

@@ -1,12 +1,13 @@
-import { Request, Response, NextFunction } from "express";
-import { getRepository, Not } from "typeorm";
+import dbConnect from "../config/database";
+import type { NextFunction, Request, Response } from "express";
+import { Not } from "typeorm";
+import type { UserRequest } from "../middlewares/authenticate";
 import {
   AutoMessageTemplate,
-  TemplateType,
   Platform,
+  TemplateType,
 } from "../models/messageTemplates";
 import ErrorHandler from "../utils/errorHandler";
-import { UserRequest } from "../middlewares/authenticate";
 
 // Validation helper
 const validateTemplateData = (data: Partial<AutoMessageTemplate>) => {
@@ -46,7 +47,7 @@ const validateTemplateData = (data: Partial<AutoMessageTemplate>) => {
       data.availableVariables.forEach((variable: any, index: any) => {
         if (!variable.name || !variable.description) {
           errors.push(
-            `Variable at index ${index} must have name and description`
+            `Variable at index ${index} must have name and description`,
           );
         }
       });
@@ -60,7 +61,7 @@ const validateTemplateData = (data: Partial<AutoMessageTemplate>) => {
 export const createMessageTemplate = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     if (!req.user?.id) {
@@ -70,7 +71,7 @@ export const createMessageTemplate = async (
     if (req.user?.userType !== "admin") {
       throw new ErrorHandler(
         "Access denied: Only admins can create templates",
-        403
+        403,
       );
     }
 
@@ -90,7 +91,7 @@ export const createMessageTemplate = async (
       throw new ErrorHandler(validationErrors.join(", "), 400);
     }
 
-    const templateRepo = getRepository(AutoMessageTemplate);
+    const templateRepo = dbConnect.getRepository(AutoMessageTemplate);
 
     // Check for duplicate template
     const existingTemplate = await templateRepo.findOne({
@@ -104,7 +105,7 @@ export const createMessageTemplate = async (
     if (existingTemplate) {
       throw new ErrorHandler(
         "Active template already exists for this type and platform",
-        409
+        409,
       );
     }
 
@@ -125,7 +126,7 @@ export const createMessageTemplate = async (
 export const updateMessageTemplate = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     if (!req.user?.id) {
@@ -135,7 +136,7 @@ export const updateMessageTemplate = async (
     if (req.user?.userType !== "admin") {
       throw new ErrorHandler(
         "Access denied: Only admins can update templates",
-        403
+        403,
       );
     }
 
@@ -151,7 +152,7 @@ export const updateMessageTemplate = async (
       throw new ErrorHandler(validationErrors.join(", "), 400);
     }
 
-    const templateRepo = getRepository(AutoMessageTemplate);
+    const templateRepo = dbConnect.getRepository(AutoMessageTemplate);
 
     // Find existing template
     const template = await templateRepo.findOne({ where: { id } });
@@ -176,7 +177,7 @@ export const updateMessageTemplate = async (
       if (existingTemplate) {
         throw new ErrorHandler(
           "Active template already exists for this type and platform",
-          409
+          409,
         );
       }
     }
@@ -201,7 +202,7 @@ export const updateMessageTemplate = async (
 export const deleteMessageTemplate = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     if (!req.user?.id) {
@@ -211,12 +212,12 @@ export const deleteMessageTemplate = async (
     if (req.user?.userType !== "admin") {
       throw new ErrorHandler(
         "Access denied: Only admins can delete templates",
-        403
+        403,
       );
     }
 
     const { id } = req.params;
-    const templateRepo = getRepository(AutoMessageTemplate);
+    const templateRepo = dbConnect.getRepository(AutoMessageTemplate);
 
     const template = await templateRepo.findOne({ where: { id } });
     if (!template) {
@@ -238,11 +239,11 @@ export const deleteMessageTemplate = async (
 export const getSingleMessageTemplate = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { id } = req.params;
-    const templateRepo = getRepository(AutoMessageTemplate);
+    const templateRepo = dbConnect.getRepository(AutoMessageTemplate);
 
     const template = await templateRepo.findOne({ where: { id } });
     if (!template) {
@@ -263,11 +264,11 @@ export const getSingleMessageTemplate = async (
 export const getAllMessageTemplates = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { type, platform, isActive, tags } = req.query;
-    const templateRepo = getRepository(AutoMessageTemplate);
+    const templateRepo = dbConnect.getRepository(AutoMessageTemplate);
 
     const query = templateRepo.createQueryBuilder("template");
 

@@ -6,7 +6,7 @@ declare module "@binance/connector" {
       symbol: string,
       side: string,
       type: string,
-      params: object
+      params: object,
     ): Promise<any>;
     logger: {
       log(message: any): void;

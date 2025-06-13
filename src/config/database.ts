@@ -1,20 +1,20 @@
 import "reflect-metadata";
-import { DataSource } from "typeorm";
 import dotenv from "dotenv";
-import { User } from "../models/user";
-import { Role } from "../models/roles";
-import { RolePermission } from "../models/role_permissions";
-import { Permission } from "../models/permissions";
-import { Chat } from "../models/chats";
-import { Message } from "../models/messages";
-import { Bank } from "../models/bank";
-import { Shift } from "../models/shift";
-import { ActivityLog } from "../models/activityLogs";
-import { Trade } from "../models/trades";
-import { Notification } from "../models/notifications";
-import { AutoMessageTemplate } from "../models/messageTemplates";
-import { Rates } from "../models/rates";
+import { DataSource } from "typeorm";
 import { Account } from "../models/accounts";
+import { ActivityLog } from "../models/activityLogs";
+import { Bank } from "../models/bank";
+import { Chat } from "../models/chats";
+import { AutoMessageTemplate } from "../models/messageTemplates";
+import { Message } from "../models/messages";
+import { Notification } from "../models/notifications";
+import { Permission } from "../models/permissions";
+import { Rates } from "../models/rates";
+import { RolePermission } from "../models/role_permissions";
+import { Role } from "../models/roles";
+import { Shift } from "../models/shift";
+import { Trade } from "../models/trades";
+import { User } from "../models/user";
 
 dotenv.config();
 
@@ -24,7 +24,6 @@ const password = process.env.DB_PASSWORD;
 const host = process.env.DB_HOST;
 
 const isProd = process.env.NODE_ENV === "production";
-
 
 const dbConnect = new DataSource({
   type: "postgres",
@@ -51,14 +50,7 @@ const dbConnect = new DataSource({
     Chat,
     Message,
   ],
-  migrations: isProd
-    ? ["dist/migration/**/*.js"] 
-    : ["src/migration/**/*.ts"], 
+  migrations: isProd ? ["dist/migration/**/*.js"] : ["src/migration/**/*.ts"],
 });
-
-// // Initialize database connection
-// dbConnect.initialize()
-//   .then(() => console.log("Database connected successfully!"))
-//   .catch((error) => console.error("Database connection error:", error));
 
 export default dbConnect;

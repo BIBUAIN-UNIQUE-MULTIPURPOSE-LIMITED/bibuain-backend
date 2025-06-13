@@ -1,11 +1,10 @@
+import express from "express";
 import {
+  createNotificationHandler,
   deleteNotification,
   getUserNotifications,
   markAllNotificationsAsCompleted,
-  markAllNotificationsAsRead,
-  createNotificationHandler
 } from "../controllers/notificationController";
-import express from "express";
 import { authenticate } from "../middlewares/authenticate";
 
 const router: any = express.Router();

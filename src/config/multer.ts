@@ -1,6 +1,6 @@
-import multer, { FileFilterCallback } from "multer";
 import path from "path";
-import { Request } from "express";
+import type { Request } from "express";
+import multer, { type FileFilterCallback } from "multer";
 import errorHandler from "../utils/errorHandler";
 
 // Configure storage
@@ -8,14 +8,14 @@ const storage = multer.diskStorage({
   destination: (
     req: Request,
     file: Express.Multer.File,
-    cb: (error: Error | null, destination: string) => void
+    cb: (error: Error | null, destination: string) => void,
   ) => {
     cb(null, "uploads/");
   },
   filename: (
     req: Request,
     file: Express.Multer.File,
-    cb: (error: Error | null, filename: string) => void
+    cb: (error: Error | null, filename: string) => void,
   ) => {
     const extname = path.extname(file.originalname);
     cb(null, `${file.fieldname}-${Date.now()}${extname}`);
@@ -25,7 +25,7 @@ const storage = multer.diskStorage({
 const fileFilter = (
   req: Request,
   file: Express.Multer.File,
-  cb: FileFilterCallback
+  cb: FileFilterCallback,
 ) => {
   const allowedFileTypes = /pdf|docx?|xlsx?|txt|jpe?g|png|webp|zip|csv/;
   const mimeTypes =

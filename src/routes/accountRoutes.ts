@@ -1,6 +1,4 @@
 import express from "express";
-import { authenticate, roleAuth } from "../middlewares/authenticate";
-import { UserType } from "../models/user";
 import {
   createAccount,
   deleteAccount,
@@ -8,6 +6,8 @@ import {
   getSingleAccount,
   updateAccount,
 } from "../controllers/accountsController";
+import { authenticate, roleAuth } from "../middlewares/authenticate";
+import { UserType } from "../models/user";
 
 const router: any = express.Router();
 

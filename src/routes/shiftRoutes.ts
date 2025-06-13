@@ -3,15 +3,15 @@ import { body, param, query } from "express-validator";
 import {
   clockIn,
   clockOut,
-  startBreak,
   endBreak,
-  getShiftMetrics,
   forceEndShift,
   getCurrentShift,
+  getShiftMetrics,
+  startBreak,
 } from "../controllers/shiftController";
 import { authenticate, roleAuth } from "../middlewares/authenticate";
 import validateRequest from "../middlewares/validateRequest";
-import { User, UserType } from "../models/user";
+import { UserType } from "../models/user";
 
 const router: any = express.Router();
 
@@ -32,7 +32,7 @@ router.get(
     query("endDate").isISO8601().withMessage("Invalid end date format"),
   ],
   validateRequest,
-  getShiftMetrics
+  getShiftMetrics,
 );
 
 router.get(
@@ -45,7 +45,7 @@ router.get(
     query("endDate").isISO8601().withMessage("Invalid end date format"),
   ],
   validateRequest,
-  getShiftMetrics
+  getShiftMetrics,
 );
 
 // Admin Routes
@@ -58,7 +58,7 @@ router.post(
     body("adminNotes").optional().isString().trim(),
   ],
   validateRequest,
-  forceEndShift
+  forceEndShift,
 );
 
 router.get("/current-shift", authenticate, getCurrentShift);

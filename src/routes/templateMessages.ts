@@ -1,17 +1,17 @@
 import express from "express";
+import { body } from "express-validator";
 import {
   createMessageTemplate,
-  updateMessageTemplate,
   deleteMessageTemplate,
-  getSingleMessageTemplate,
   getAllMessageTemplates,
+  getSingleMessageTemplate,
+  updateMessageTemplate,
 } from "../controllers/templateMessages";
 import { authenticate, roleAuth } from "../middlewares/authenticate";
-import { UserType } from "../models/user";
 import validateRequest from "../middlewares/validateRequest";
-import { body } from "express-validator";
 import { TemplateType } from "../models/messageTemplates";
 import { TradePlatform } from "../models/trades";
+import { UserType } from "../models/user";
 
 const router: any = express.Router();
 
@@ -62,7 +62,7 @@ router
     roleAuth([UserType.ADMIN]),
     validateTemplateFields,
     validateRequest,
-    createMessageTemplate
+    createMessageTemplate,
   )
   .get(getAllMessageTemplates);
 
@@ -74,7 +74,7 @@ router
     roleAuth([UserType.ADMIN]),
     validateTemplateFields,
     validateRequest,
-    updateMessageTemplate
+    updateMessageTemplate,
   )
   .delete(authenticate, roleAuth([UserType.ADMIN]), deleteMessageTemplate);
 

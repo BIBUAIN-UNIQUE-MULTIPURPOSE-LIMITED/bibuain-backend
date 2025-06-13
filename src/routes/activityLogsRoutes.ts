@@ -2,8 +2,8 @@ import { Router } from "express";
 import {
   createActivityLog,
   deleteActivityLogs,
-  getActivityLogs,
   getActivityLogById,
+  getActivityLogs,
 } from "../controllers/activityLogsControllers";
 import { authenticate, roleAuth } from "../middlewares/authenticate";
 import { UserType } from "../models/user";
@@ -22,7 +22,7 @@ router.post(
     UserType.CEO,
     UserType.CC,
   ]),
-  createActivityLog
+  createActivityLog,
 );
 
 // Other users can only see their own logs (filtered in controller)
@@ -32,7 +32,7 @@ router.get("/", roleAuth([UserType.ADMIN, UserType.CEO]), getActivityLogs);
 router.get(
   "/:id",
   roleAuth([UserType.ADMIN, UserType.CEO]),
-  getActivityLogById
+  getActivityLogById,
 );
 
 // Delete logs - Admin only
