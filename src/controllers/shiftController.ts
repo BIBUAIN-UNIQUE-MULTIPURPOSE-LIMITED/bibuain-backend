@@ -206,7 +206,6 @@ export const clockOut: RequestHandler = async (
       activeShift.status = ShiftStatus.FORCE_CLOSED;
       activeShift.clockOutTime = now;
       activeShift.isClockedIn = false;
-
       await shiftRepo.save(activeShift);
 
       next(new ErrorHandler("Unexpected error. Shift forcefully ended.", 500));
@@ -232,7 +231,6 @@ export const clockOut: RequestHandler = async (
             await bankRepo.save(bank);
           }
         }
-
         activeShift.status = ShiftStatus.FORCE_CLOSED;
         activeShift.clockOutTime = new Date();
         activeShift.isClockedIn = false;

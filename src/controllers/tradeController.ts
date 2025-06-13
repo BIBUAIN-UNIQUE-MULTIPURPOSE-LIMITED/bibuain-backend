@@ -404,7 +404,6 @@ export const processTradeQueue = async (): Promise<void> => {
       for (let i = 0; i < queuedTrades.length; i++) {
         const trade = queuedTrades[i];
         const newPosition = i + 1;
-
         if (trade.queuePosition !== newPosition) {
           trade.queuePosition = newPosition;
           if (!trade.queuedAt) {
@@ -549,7 +548,6 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
 
     // 2) Fetch all "active funded" trades from platforms and sync to DB
     const liveTrades = await aggregateLiveTrades();
-
     if (liveTrades.length === 0) {
       await queryRunner.commitTransaction();
       return [];
@@ -602,7 +600,6 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
             existing.queuedAt = null;
             existing.completedAt = new Date();
             await queryRunner.manager.save(existing);
-
             io?.emit("tradeStatusChanged", {
               tradeId: existing.id,
               status: existing.status,
@@ -617,7 +614,6 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
             existing.queuedAt = null;
             existing.completedAt = new Date();
             await queryRunner.manager.save(existing);
-
             io?.emit("tradeStatusChanged", {
               tradeId: existing.id,
               status: existing.status,
@@ -657,7 +653,6 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
 export const pollAndAssignLiveTrades = async () => {
   if (isProcessing) return;
   isProcessing = true;
-
   try {
     const isConnected = await checkDbConnection();
     if (!isConnected) {
@@ -829,7 +824,6 @@ export const markTradeAsPaid = async (
       where: { id: tradeId },
       relations: ["assignedPayer"],
     });
-
     if (!trade) return next(new ErrorHandler("Trade not found", 404));
     if (trade.platform !== "paxful" && trade.platform !== "noones") {
       return next(new ErrorHandler("Unsupported platform", 400));
@@ -880,7 +874,6 @@ export const markTradeAsPaid = async (
       const bank = await bankRepo.findOne({
         where: { shift: { id: activeShift.id } },
       });
-
       if (bank) {
         const amountUsed = trade.amount || 0;
         const remaining = bank.funds - amountUsed;
@@ -1019,7 +1012,6 @@ export const reassignTrade = async (
       trade.assignedPayerId = undefined;
       trade.assignedAt = null;
       trade.isEscalated = false;
-
       // Set queue position as second in line (position 2)
       // This ensures it doesn't push out currently assigned trades
       // but gets priority over other waiting trades
@@ -1631,12 +1623,10 @@ export const getOfferDetailsController = async (
   try {
     const { offer_hash } = req.body;
     if (!offer_hash) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Missing offer_hash in request body",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Missing offer_hash in request body",
+      });
     }
 
     const services = await initializePlatformServices();
@@ -1675,12 +1665,10 @@ export const activateOfferController = async (
   try {
     const { offer_hash, platform } = req.body;
     if (!offer_hash) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Missing offer_hash in request body",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Missing offer_hash in request body",
+      });
     }
 
     if (!platform) {
@@ -1719,12 +1707,10 @@ export const activateOfferController = async (
       );
       result = await noonesService.activateOffer(offer_hash);
     } else {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Invalid platform. Use 'paxful' or 'noones'",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid platform. Use 'paxful' or 'noones'",
+      });
     }
 
     return res.status(200).json({
