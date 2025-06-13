@@ -187,29 +187,18 @@ export class BinanceService {
         throw new Error("Unexpected response format from Binance API");
       }
 
-      // console.log(`Received ${wallets.length} wallet entries from Binance`);
-
-      // Find the Spot wallet
       const spotWallet = wallets.find((wallet) => wallet.walletName === "Spot");
 
       if (!spotWallet) {
-        // console.log('No Spot wallet found');
         return [];
       }
-
-      // Since the wallet balance endpoint doesn't provide per-asset balances,
-      // we need to call another endpoint to get detailed account information
-      // For now, we'll create a placeholder asset balance
-
-      // To get actual asset balances, you should use the /api/v3/account endpoint
-      // You would need to implement getAccountInfo() method separately
 
       if (parseFloat(spotWallet.balance) > 0) {
         return [
           {
-            asset: "TOTAL", // This is a placeholder. You should call getAccountInfo for detailed balances
+            asset: "TOTAL",
             free: spotWallet.balance,
-            locked: "0", // This endpoint doesn't provide locked balance separately
+            locked: "0",
           },
         ];
       }
@@ -259,7 +248,6 @@ export class BinanceService {
           parseFloat(balance.free) > 0 || parseFloat(balance.locked) > 0,
       );
 
-      // console.log(`Found ${nonZeroBalances.length} non-zero balances`);
       return nonZeroBalances;
     } catch (error: any) {
       console.error(
@@ -297,10 +285,8 @@ export class BinanceService {
     if (asset) {
       params.asset = asset;
     }
-    // optionally include BTC valuation
     params.needBtcValuation = false;
 
-    // signature covers all params
     const queryString = new URLSearchParams(params).toString();
     const signature = this.createSignature(queryString);
 
@@ -310,10 +296,8 @@ export class BinanceService {
       { params: { ...params, signature } },
     );
 
-    // response.data is an array of { asset, free, locked, … }
     const assets: any[] = response.data;
 
-    // filter out zero balances and map to your AssetBalance type
     return assets
       .filter((a) => parseFloat(a.free) > 0 || parseFloat(a.locked) > 0)
       .map((a) => ({
@@ -329,7 +313,6 @@ export class BinanceService {
     total: string;
   }> {
     try {
-      // Use the funding asset endpoint with POST method
       const timestamp = Date.now();
       const queryParams = asset
         ? `asset=${asset}&timestamp=${timestamp}`
@@ -341,22 +324,14 @@ export class BinanceService {
         null,
         {
           params: {
-            asset: asset || undefined, // Only include if not empty
+            asset: asset || undefined,
             timestamp,
             signature,
           },
         },
       );
 
-      // Log the response for debugging
-      console.log(
-        `Funding asset response for ${asset || "all assets"}:`,
-        JSON.stringify(response.data),
-      );
-
-      // Check if we have valid data
       if (Array.isArray(response.data)) {
-        // If asset was specified, find that specific asset
         if (asset) {
           const assetBalance = response.data.find(
             (item) => item.asset === asset,
@@ -372,8 +347,6 @@ export class BinanceService {
             return { free, locked, total };
           }
         }
-        // If no specific asset was requested or asset wasn't found,
-        // return first asset in response (if available)
         else if (response.data.length > 0) {
           const assetBalance = response.data[0];
           const fmt = (s: string) => parseFloat(s).toFixed(8);
@@ -384,17 +357,13 @@ export class BinanceService {
           return { free, locked, total };
         }
       }
-
-      // If no funding wallet balance found for this asset, return zeros
       return { free: "0", locked: "0", total: "0" };
     } catch (error: any) {
       console.error(
         `Failed to fetch funding wallet balance for ${asset}:`,
         error,
       );
-      // Log the full error for debugging
       console.error("Error details:", error.response?.data || error.message);
-      // Return zeros on error instead of throwing
       return { free: "0", locked: "0", total: "0" };
     }
   }
