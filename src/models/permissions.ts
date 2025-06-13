@@ -1,9 +1,9 @@
 import {
-  Entity,
-  PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  Entity,
   OneToMany,
+  PrimaryGeneratedColumn,
 } from "typeorm";
 import { RolePermission } from "./role_permissions";
 

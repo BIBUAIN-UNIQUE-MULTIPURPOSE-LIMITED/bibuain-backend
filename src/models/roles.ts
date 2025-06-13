@@ -1,12 +1,12 @@
 import {
-  Entity,
-  PrimaryGeneratedColumn,
   Column,
-  OneToMany,
   CreateDateColumn,
+  Entity,
+  OneToMany,
+  PrimaryGeneratedColumn,
 } from "typeorm";
-import { User } from "./user";
 import { RolePermission } from "./role_permissions";
+import { User } from "./user";
 
 @Entity("roles")
 export class Role {

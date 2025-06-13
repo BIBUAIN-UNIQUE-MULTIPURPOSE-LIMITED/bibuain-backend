@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from "express";
+import type { NextFunction, Request, Response } from "express";
 import dbConnect from "../config/database";
 import { Bank, BankTag } from "../models/bank";
 import { Shift } from "../models/shift";

@@ -1,5 +1,3 @@
-import crypto from "crypto";
-import { PaxfulApi } from "@paxful/sdk-js/dist/PaxfulApi.js";
 import usePaxful from "@paxful/sdk-js";
 
 export interface PaxfulAccountConfig {
@@ -14,6 +12,15 @@ export interface TradeMessage {
   text: string;
   timestamp: number;
   sender: string;
+}
+
+export interface UserProfile {
+  user: string;
+}
+
+export interface TradeChat {
+  messages: string[];
+  attachments: string[];
 }
 
 export interface WalletTransaction {
@@ -37,28 +44,20 @@ export interface OfferDetails {
 }
 
 export class PaxfulService {
-  private paxfulApi: PaxfulApi;
+  private paxfulApi: any;
   public accountId?: string;
   public label?: string;
 
   constructor(config: PaxfulAccountConfig) {
-    // console.log('Initializing PaxfulService with:',
-    //   {
-    //   clientId: config.clientId ? 'PRESENT' : 'MISSING',
-    //   clientIdLength: config.clientId?.length,
-    //   clientSecretLength: config.clientSecret?.length,
-    //   accountId: config.accountId,
-    //   label: config.label
-    // });
-
     if (!config.clientId || !config.clientSecret) {
       throw new Error("Client ID and secret are required for Paxful service");
     }
 
-    this.paxfulApi = new PaxfulApi({
+    this.paxfulApi = usePaxful({
       clientId: config.clientId,
       clientSecret: config.clientSecret,
     });
+
     this.accountId = config.accountId;
     this.label = config.label;
   }
@@ -68,61 +67,66 @@ export class PaxfulService {
     data: Record<string, any> = {},
   ): Promise<any> {
     try {
-      // console.log(`[${this.label}] Making request to ${endpoint}`);
       const response = await this.paxfulApi.invoke(endpoint, data);
       return response;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(`[${this.label}] Request failed:`, {
         endpoint,
+        error: (error as Error).message,
       });
       throw new Error(
-        `Paxful API Error for account ${this.label}: ${error.message}`,
+        `Paxful API Error for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
 
-  // Add a new method for fetching trades from Paxful
+  /**
+   * Lists active trades for the Paxful account.
+   */
   async listActiveTrades(): Promise<any[]> {
     try {
-      // Use the correct endpoint for trades – adjust params as needed
       const response = await this.paxfulApi.invoke("/paxful/v1/trade/list", {
         active: true,
       });
 
-      // Adjust the check based on how Paxful returns the trades data
       if (!response.data?.trades) {
         console.warn(`[${this.label}] No trades data in response:`, response);
         return [];
       }
 
       return response.data.trades;
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to list active trades for account ${this.label}: ${error.message}`,
+        `Failed to list active trades for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
 
+  /**
+   * Fetches details of a specific trade by its hash.
+   * @param {string} tradeHash - The hash of the trade to fetch details for.
+   */
   async getTradeDetails(tradeHash: string) {
     return await this.makeRequest("/paxful/v1/trade/get", {
       trade_hash: tradeHash,
     });
   }
 
+  /**
+   * Marks a trade as paid.
+   * @param {string} tradeHash - The hash of the trade to mark as paid.
+   * @returns {Promise<boolean>} - Returns true if the trade was successfully marked as paid.
+   */
   async markTradeAsPaid(tradeHash: string): Promise<boolean> {
     try {
-      // First get the current trade status
       const tradeDetails = await this.getTradeDetails(tradeHash);
 
-      // Check if trade is already completed
       if (
         tradeDetails.data?.trade_status === "completed" ||
         tradeDetails.data?.trade_status === "paid"
       ) {
-        return true; // Already paid, consider this a success
+        return true;
       }
-
-      // Check if trade is in a terminal state
       if (
         ["cancelled", "expired", "disputed"].includes(
           tradeDetails.data?.trade_status,
@@ -144,70 +148,69 @@ export class PaxfulService {
       }
 
       return true;
-    } catch (error: any) {
-      // Handle HTTP errors
-      if (error.response) {
-        // Handle 404 - Trade not found
-        if (error.response.status === 404) {
-          throw new Error(
-            `Trade ${tradeHash} not found - may have expired or been canceled`,
-          );
-        }
-
-        // Handle rate limiting
-        if (error.response.status === 429) {
-          throw new Error("Too many requests - please try again later");
-        }
-
-        // Handle other HTTP errors
-        const errorData = error.response.data?.error || error.response.data;
-        throw new Error(
-          errorData?.message || `HTTP ${error.response.status} error`,
-        );
-      }
-
-      // Re-throw other errors
-      throw error;
+    } catch (error: unknown) {
+      console.error(
+        `[${this.label}] Error marking trade ${tradeHash} as paid:`,
+        error,
+      );
+      throw new Error(`HTTP ${(error as Error).message} error`);
     }
   }
 
+  /*
+   * Fetches the current Bitcoin price from Paxful.
+   * @returns {Promise<number>}
+   * @throws {Error} If the API request fails or returns an error.
+   */
   async getBitcoinPrice(): Promise<number> {
-    const paxfulApi = new PaxfulApi({
-      clientId: "qdmuUssOPik1cCfGD3lxQjUu6EYzUoP2olFh4TGkormR0JBC",
-      clientSecret: "qtyTukmnNSzbQv8UQJzsSglALTHWCukWcaJUjX8lGGAC8Ex3",
-    });
-
-    const paxfulRateResponse = await paxfulApi.invoke(
+    const paxfulRateResponse = await this.makeRequest(
       "/paxful/v1/currency/btc",
       {},
     );
     return paxfulRateResponse.price;
   }
 
-  async getWalletBalance(cryptoCurrency: string = "BTC"): Promise<string> {
+  /**
+   * Fetches the current USDT price from Paxful.
+   * @returns {Promise<number>}
+   * @throws {Error} If the API request fails or returns an error.
+   */
+  async getWalletBalance(cryptoCurrency = "BTC"): Promise<string> {
     const response = await this.makeRequest("/paxful/v1/wallet/balance", {
       crypto_currency_code: cryptoCurrency,
     });
     return response.data.balance;
   }
 
-  async getTradeChat(tradeHash: string): Promise<any> {
+  /**
+   * Fetches the current USDT price from Paxful.
+   * @returns {Promise<number>}
+   * @throws {Error} If the API request fails or returns an error.
+   */
+  async getTradeChat(tradeHash: string): Promise<TradeChat> {
     try {
       const response = await this.makeRequest("/paxful/v1/trade-chat/get", {
         trade_hash: tradeHash,
       });
-      console.log(response);
+
       return {
         messages: response.data.messages,
         attachments: response.data.attachments,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to fetch trade chat for account ${this.label}: ${error.message}`,
+        `Failed to fetch trade chat for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
 
+  /**
+   * Sends a message in the trade chat.
+   * @param {string} tradeHash - The hash of the trade to send the message in.
+   * @param {string} message - The message to send.
+   * @returns {Promise<TradeMessage>} - The sent trade message.
+   * @throws {Error} If the API request fails or returns an error.
+   */
   async sendTradeMessage(
     tradeHash: string,
     message: string,
@@ -219,13 +222,23 @@ export class PaxfulService {
       });
       console.log(response);
       return response.data ? response.data.message : response.error.message;
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to send trade message for account ${this.label}: ${error.message}`,
+        `Failed to send trade message for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
 
+  /**
+   * Fetches the transaction history for the Paxful wallet.
+   * @param {Object} options - Optional parameters for filtering the transaction history.
+   * @param {string} options.type - The type of transactions to fetch (e.g., "deposit", "withdrawal").
+   * @param {number} options.limit - The maximum number of transactions to return.
+   * @param {number} options.offset - The offset for pagination.
+   * @param {string} options.currency - The currency to filter transactions by.
+   * @returns {Promise<WalletTransaction[]>} - The list of wallet transactions.
+   * @throws {Error} If the API request fails or returns an error.
+   */
   async getTransactionHistory(
     options: {
       type?: string;
@@ -240,13 +253,23 @@ export class PaxfulService {
         options,
       );
       return response.data.transactions;
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to fetch transaction history for account ${this.label}: ${error.message}`,
+        `Failed to fetch transaction history for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
 
+  /**
+   * Lists offers for the Paxful account.
+   * @param {Object} params - Optional parameters for filtering offers.
+   * @param {string} params.type - The type of offers to list (e.g., "buy", "sell").
+   * @param {string} params.status - The status of offers to list (e.g., "active", "paused", "closed").
+   * @param {number} params.offset - The offset for pagination.
+   * @param {number} params.limit - The maximum number of offers to return.
+   * @returns {Promise<OfferDetails[]>} - The list of offer details.
+   * @throws {Error} If the API request fails or returns an error.
+   */
   async listOffers(
     params: {
       type?: "buy" | "sell";
@@ -258,26 +281,40 @@ export class PaxfulService {
     try {
       const response = await this.makeRequest("/paxful/v1/offer/list", params);
       return response.data.offers;
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to list offers for account ${this.label}: ${error.message}`,
+        `Failed to list offers for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
 
+  /**
+   * Cancels a trade by its hash.
+   * @param {string} tradeHash - The hash of the trade to cancel.
+   * @returns {Promise<boolean>} - Returns true if the trade was successfully cancelled.
+   * @throws {Error} If the API request fails or returns an error.
+   */
   async cancelTrade(tradeHash: string): Promise<boolean> {
     try {
       await this.makeRequest("/paxful/v1/trade/cancel", {
         trade_hash: tradeHash,
       });
       return true;
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to cancel trade for account ${this.label}: ${error.message}`,
+        `Failed to cancel trade for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
 
+  /**
+   * Uploads a document to a trade.
+   * @param {string} tradeHash - The hash of the trade to upload the document to.
+   * @param {Buffer} document - The document buffer to upload.
+   * @param {string} filename - The name of the file being uploaded.
+   * @returns {Promise<{document_id: string, url: string}>} - The uploaded document details.
+   * @throws {Error} If the API request fails or returns an error.
+   */
   async uploadTradeDocument(
     tradeHash: string,
     document: Buffer,
@@ -296,26 +333,42 @@ export class PaxfulService {
         },
       );
       return response.data.document;
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to upload trade document for account ${this.label}: ${error.message}`,
+        `Failed to upload trade document for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
 
-  async getUserProfile(username: string): Promise<any> {
+  /**
+   * Fetches the user profile for a given username.
+   * @param {string} username - The username to fetch the profile for.
+   * @returns {Promise<any>} - The user profile data.
+   * @throws {Error} If the API request fails or returns an error.
+   */
+  async getUserProfile(username: string): Promise<UserProfile> {
     try {
       const response = await this.makeRequest("/paxful/v1/user/info", {
         username: username,
       });
       return response.data.user;
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to fetch user profile for account ${this.label}: ${error.message}`,
+        `Failed to fetch user profile for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
 
+  /**
+   * Fetches feedback for a given username.
+   * @param {Object} params - Optional parameters for filtering feedback.
+   * @param {string} params.username - The username to fetch feedback for.
+   * @param {string} params.type - The type of feedback to fetch ("received" or "given").
+   * @param {number} params.limit - The maximum number of feedback items to return.
+   * @param {number} params.offset - The offset for pagination.
+   * @returns {Promise<any[]>} - The list of feedback items.
+   * @throws {Error} If the API request fails or returns an error.
+   */
   async getFeedback(
     params: {
       username?: string;
@@ -330,12 +383,19 @@ export class PaxfulService {
         params,
       );
       return response.data.feedback;
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to fetch feedback for account ${this.label}: ${error.message}`,
+        `Failed to fetch feedback for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
+
+  /**
+   * Lists active offers for the Paxful account.
+   * @param {string} offerType - The type of offers to list ("buy" or "sell").
+   * @returns {Promise<any[]>} - The list of active offers.
+   * @throws {Error} If the API request fails or returns an error.
+   */
   async listActiveOffers(offerType?: "buy" | "sell"): Promise<any[]> {
     try {
       const params: Record<string, any> = { active: true };
@@ -354,14 +414,19 @@ export class PaxfulService {
       }
 
       return response.data.offers;
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to list active offers for account ${this.label}: ${error.message}`,
+        `Failed to list active offers for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
 
-  async getDeactivatedOffers(): Promise<any[]> {
+  /**
+   * Fetches deactivated offers for the Paxful account.
+   * @returns {Promise<any[]>} - The list of deactivated offers.
+   * @throws {Error} If the API request fails or returns an error.
+   */
+  async getDeactivatedOffers(): Promise<boolean[]> {
     try {
       const params = {
         active: "false",
@@ -373,37 +438,29 @@ export class PaxfulService {
         params,
       );
 
-      // Check if we have a valid response with offers
       if (!response?.data?.offers) {
         console.warn("No offers found in Paxful response:", response);
         return [];
       }
 
-      // Log is_blocked status for each offer
-      response.data.offers.forEach((offer: any, index: number) => {
-        // console.log(`Offer ${index} active status:`, offer.active);
-      });
-
-      // Alternatively, log the count of blocked offers
-      const blockedOffers = response.data.offers.filter(
-        (offer: any) => offer.active === false,
-      );
-      // console.log(`Found ${blockedOffers.length} blocked offers out of ${response.data.offers.length} total`);
-
-      // Return all blocked offers
       return response.data.offers.filter(
-        (offer: any) => offer.active === false,
+        (offer: { active: boolean }) => offer.active === false,
       );
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error fetching Paxful deactivated offers:", err);
       throw new Error(
-        `Failed to fetch Paxful deactivated offers: ${err.message}`,
+        `Failed to fetch Paxful deactivated offers: ${(err as Error).message}`,
       );
     }
   }
 
-  async getOfferDetails(offerHash: string): Promise<any> {
-    // console.log(`[PaxfulService] → getOfferDetails(${offerHash}) called`);
+  /**
+   * Fetches details of a specific offer by its hash.
+   * @param {string} offerHash - The hash of the offer to fetch details for.
+   * @returns {Promise<any>} - The offer details.
+   * @throws {Error} If the API request fails or returns an error.
+   */
+  async getOfferDetails(offerHash: string): Promise<string | null> {
     try {
       const params = { offer_hash: offerHash };
       const response = await this.paxfulApi.invoke(
@@ -411,8 +468,6 @@ export class PaxfulService {
         params,
       );
 
-      // The wrapper returns:
-      // { status: 'success', timestamp: ..., data: { id: ..., offer_hash: ..., … } }
       const offer = response?.data;
       if (!offer || typeof offer !== "object") {
         console.warn(
@@ -422,19 +477,22 @@ export class PaxfulService {
         return null;
       }
 
-      console.log(
-        "[PaxfulService] → Retrieved offer details:",
-        // you can JSON.stringify if you want a single‑line dump
-        offer,
-      );
       return offer;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[PaxfulService] → Error in getOfferDetails:", err);
-      throw new Error(`Failed to fetch offer details: ${err.message}`);
+      throw new Error(
+        `Failed to fetch offer details: ${(err as Error).message}`,
+      );
     }
   }
 
-  async activateOffer(offerHash: string): Promise<any> {
+  /**
+   * Activates a Paxful offer by its hash.
+   * @param {string} offerHash - The hash of the offer to activate.
+   * @returns {Promise<string>} - The response from the activation request.
+   * @throws {Error} If the API request fails or returns an error.
+   */
+  async activateOffer(offerHash: string): Promise<string> {
     try {
       const params: Record<string, string> = { offer_hash: offerHash };
       const response = await this.paxfulApi.invoke(
@@ -443,13 +501,19 @@ export class PaxfulService {
       );
       console.log(`Activated Paxful offer ${offerHash}:`, response);
       return response;
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to activate Paxful offer ${offerHash}: ${error.message}`,
+        `Failed to activate Paxful offer ${offerHash}: ${(error as Error).message}`,
       );
     }
   }
 
+  /**
+   * Deactivates a Paxful offer by its hash.
+   * @param {string} offerHash - The hash of the offer to deactivate.
+   * @returns {Promise<string>} - The response from the deactivation request.
+   * @throws {Error} If the API request fails or returns an error.
+   */
   async turnOnAllOffers(): Promise<number> {
     try {
       const response = await this.paxfulApi.invoke(
@@ -458,28 +522,40 @@ export class PaxfulService {
       );
       console.log(response);
       return response.data;
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to turn off all offers for account ${this.label}: ${error.message}`,
+        `Failed to turn off all offers for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
-  async updateOffer(offerId: string, margin: number): Promise<any> {
+
+  /*
+   * Updates a Paxful offer with a new margin.
+   * @param {string} offerId - The ID of the offer to update.
+   * @param {number} margin - The new margin to set for the offer.
+   * @returns {Promise<string>} - The response from the update request.
+   * @throws {Error} If the API request fails or returns an error.
+   */
+  async updateOffer(offerId: string, margin: number): Promise<string> {
     try {
-      // console.log(`[${this.label}] Updating Paxful offer ${offerId} with margin ${margin}`);
       const response = await this.makeRequest("/paxful/v1/offer/update", {
         offer_hash: offerId,
         margin: margin,
       });
-      // console.log(`[${this.label}] Paxful update response:`, response);
       return response;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(`[${this.label}] Paxful offer update failed:`, error);
       throw new Error(
-        `Failed to update offer for account ${this.label}: ${error.message}`,
+        `Failed to update offer for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
+
+  /**
+   * Turns off all offers for the Paxful account.
+   * @returns {Promise<number>} - The number of offers turned off.
+   * @throws {Error} If the API request fails or returns an error.
+   */
   async turnOffAllOffers(): Promise<number> {
     try {
       const response = await this.paxfulApi.invoke(
@@ -488,16 +564,20 @@ export class PaxfulService {
       );
       console.log(response);
       return response.data;
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to turn off all offers for account ${this.label}: ${error.message}`,
+        `Failed to turn off all offers for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
 
+  /**
+   * Fetches the current Bitcoin price in NGN (Nigerian Naira) from Paxful.
+   * @returns {Promise<number>} - The Bitcoin price in NGN.
+   * @throws {Error} If the API request fails or returns an error.
+   */
   async getBitcoinPriceInNgn(): Promise<number> {
     try {
-      // Get BTC price in USD
       const btcUsdResponse = await this.makeRequest(
         "/paxful/v1/currency/btc",
         {},
@@ -506,7 +586,7 @@ export class PaxfulService {
         throw new Error("Invalid BTC price response");
       }
 
-      const btcPriceUsd = parseFloat(btcUsdResponse.price);
+      const btcPriceUsd = Number.parseFloat(btcUsdResponse.price);
 
       // Get NGN rate
       const listResponse = await this.makeRequest(
@@ -515,11 +595,11 @@ export class PaxfulService {
       );
       if (listResponse?.data?.currencies) {
         const ngnData = listResponse.data.currencies.find(
-          (cur: any) => cur.code.toLowerCase() === "ngn",
+          (cur: { code: string }) => cur.code.toLowerCase() === "ngn",
         );
 
         if (ngnData?.rate?.usd) {
-          return btcPriceUsd * parseFloat(ngnData.rate.usd);
+          return btcPriceUsd * Number.parseFloat(ngnData.rate.usd);
         }
       }
       throw new Error("NGN rate not found in response");
@@ -529,6 +609,11 @@ export class PaxfulService {
     }
   }
 
+  /**
+   * Fetches the current USDT price in NGN (Nigerian Naira) from Paxful.
+   * @returns {Promise<number>} - The USDT price in NGN.
+   * @throws {Error} If the API request fails or returns an error.
+   */
   async getUsdtPriceInNgn(): Promise<number> {
     try {
       const listResponse = await this.makeRequest(
@@ -537,15 +622,15 @@ export class PaxfulService {
       );
       if (listResponse?.data?.currencies) {
         const ngnData = listResponse.data.currencies.find(
-          (cur: any) => cur.code.toLowerCase() === "ngn",
+          (cur: { code: string }) => cur.code.toLowerCase() === "ngn",
         );
 
         if (ngnData?.rate?.usdt) {
-          return parseFloat(ngnData.rate.usdt);
+          return Number.parseFloat(ngnData.rate.usdt);
         }
         // Fallback to USD rate if USDT rate not available
         if (ngnData?.rate?.usd) {
-          return parseFloat(ngnData.rate.usd);
+          return Number.parseFloat(ngnData.rate.usd);
         }
       }
       throw new Error("USDT/NGN rate not found");
@@ -554,38 +639,34 @@ export class PaxfulService {
       throw new Error(`Failed to fetch USDT/NGN rate: ${error}`);
     }
   }
+
+  /**
+   * Fetches feedback statistics for a user based on their username, role, and rating.
+   * @param {Object} params - Parameters for fetching feedback stats.
+   * @param {string} params.username - The username to fetch feedback stats for.
+   * @param {string} params.role - The role of the user ("buyer" or "seller").
+   * @param {number} params.rating - The rating to filter feedback by (0 for negative, 1 for positive).
+   * @returns {Promise<number>} - The total count of feedback matching the criteria.
+   * @throws {Error} If the API request fails or returns an error.
+   */
   async getFeedbackStats(params: {
     username?: string;
     role?: "buyer" | "seller";
     rating: number;
   }): Promise<number> {
     try {
-      // Convert the 0 rating to -1 for negative feedback as per the API documentation
       const apiRating = params.rating === 0 ? -1 : params.rating;
-
-      // console.log(`[paxfulService] Making request for ${params.username} with rating ${apiRating}`);
-
       const requestParams = {
         username: params.username,
         role: params.role,
         rating: apiRating,
         page: 1,
       };
-
-      // console.log(`[paxfulService] Request params:`, requestParams);
-
       const response = await this.makeRequest(
         "/paxful/v1/feedback/list",
         requestParams,
       );
 
-      // Log the full response for debugging
-      console.log(
-        `[paxfulService] Full response for ${params.username}:`,
-        JSON.stringify(response),
-      );
-
-      // Check for errors in the response
       if (response && response.status === "error") {
         console.log(
           `[paxfulService] API returned error: ${response.error?.message || "Unknown error"}`,
@@ -594,11 +675,7 @@ export class PaxfulService {
       }
 
       // Check different possible response formats
-      if (
-        response &&
-        response.data &&
-        typeof response.data.total_count === "number"
-      ) {
+      if (response?.data && typeof response.data.total_count === "number") {
         return response.data.total_count;
       } else if (response.total_count !== undefined) {
         return response.total_count;
@@ -610,13 +687,16 @@ export class PaxfulService {
 
       console.log("[paxfulService] Unexpected response format:", response);
       return 0;
-    } catch (error: any) {
-      console.error("Error in Paxful getFeedbackStats:", error.message);
+    } catch (error: unknown) {
+      console.error(
+        "Error in Paxful getFeedbackStats:",
+        (error as Error).message,
+      );
       return 0;
     }
   }
 
-  async listCompletedTrades(page: number = 1): Promise<any[]> {
+  async listCompletedTrades(page = 1): Promise<any[]> {
     try {
       const response = await this.makeRequest("/paxful/v1/trade/completed", {
         page,
@@ -629,9 +709,9 @@ export class PaxfulService {
         return [];
       }
       return response.data.trades;
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to list completed trades for account ${this.label}: ${error.message}`,
+        `Failed to list completed trades for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
@@ -657,36 +737,19 @@ export class PaxfulService {
 
       if (params.country) requestParams.country = params.country;
 
-      // console.log(`[${this.label}] Creating Paxful offer...`);
-
       const response = await this.makeRequest(
         "/paxful/v1/offer/create",
         requestParams,
       );
-      // console.log(response);
       return {
+        offer_hash: response.data.offer_hash,
+        message: response.data.message,
+        offer_id: response.data.offer_id,
         success: true,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error creating Paxful offer:", error);
-      throw new Error(`Failed to create offer: ${error.message}`);
+      throw new Error(`Failed to create offer: ${(error as Error).message}`);
     }
   }
 }
-
-const apiConfig: PaxfulAccountConfig = {
-  clientId:
-    process.env.PAXFUL_CLIENT_ID ||
-    "L4HJDA4ic91JwsWLkQCDeZkue7TH4jmpn4kyKUuKkRSUdCF3",
-  clientSecret:
-    process.env.PAXFUL_CLIENT_SECRET ||
-    "5lVWlN54pPhnrqWkU8mqv1P2ExEpadN7LuQ4RiIKQtF36nk2",
-};
-
-const paxfulService = new PaxfulService(apiConfig);
-
-export const fetchPaxfulTrades = async () => paxfulService.listActiveTrades();
-export const getPaxfulTradeDetails = async (tradeHash: string) =>
-  paxfulService.getTradeDetails(tradeHash);
-
-export default paxfulService;

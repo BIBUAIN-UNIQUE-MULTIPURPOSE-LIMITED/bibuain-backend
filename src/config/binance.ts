@@ -1,6 +1,10 @@
-import axios, { AxiosInstance } from "axios";
 import crypto from "crypto";
-import { SimpleConsoleLogger } from "typeorm";
+import axios, { type AxiosError, type AxiosInstance } from "axios";
+
+interface BinanceErrorResponse {
+  code: number;
+  msg: string;
+}
 
 export interface BinanceAccountConfig {
   apiKey: string;
@@ -33,6 +37,12 @@ export interface AccountInfo {
   accountType: string;
   balances: AssetBalance[];
   permissions: string[];
+}
+
+export interface WalletBalance {
+  walletName: string;
+  activate: boolean;
+  balance: string;
 }
 
 export class BinanceService {
@@ -76,7 +86,7 @@ export class BinanceService {
   /**
    * Handles errors coming from the Binance API.
    */
-  private handleApiError(error: any): never {
+  private handleApiError(error: AxiosError<BinanceErrorResponse>): never {
     const errorMessage = error.response?.data?.msg || error.message;
     const errorCode = error.response?.status;
 
@@ -102,7 +112,6 @@ export class BinanceService {
 
   /**
    * Fetches the current average price for the provided symbol.
-   * (This is a public endpoint so no signature is required.)
    */
   async getAveragePrice(symbol: string): Promise<AveragePriceResponse> {
     try {
@@ -110,13 +119,17 @@ export class BinanceService {
         params: { symbol },
       });
       return response.data;
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to fetch average price for ${symbol}: ${error.message}`,
+        `Failed to fetch average price for ${symbol}: ${(error as Error)?.message}`,
       );
     }
   }
 
+  /**
+   * Retrieves the funding wallet balances.
+   * This is a signed endpoint that returns the total balance of the Funding wallet.
+   */
   async getFundingWalletBalances(): Promise<AssetBalance[]> {
     try {
       const timestamp = Date.now();
@@ -133,9 +146,8 @@ export class BinanceService {
         },
       );
 
-      // Find the Funding wallet entry
       const fundingWallet = response.data.find(
-        (wallet: any) =>
+        (wallet: WalletBalance) =>
           wallet.walletName === "Funding" && wallet.activate === true,
       );
 
@@ -143,8 +155,6 @@ export class BinanceService {
         console.log("No active Funding wallet found");
         return [];
       }
-
-      // Return the funding wallet balance as a single total
       return [
         {
           asset: "FUNDING_TOTAL",
@@ -152,10 +162,10 @@ export class BinanceService {
           locked: "0",
         },
       ];
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error fetching funding wallet balances:", error);
       throw new Error(
-        `Failed to fetch funding wallet balances: ${error.message}`,
+        `Failed to fetch funding wallet balances: ${(error as Error)?.message}`,
       );
     }
   }
@@ -171,13 +181,9 @@ export class BinanceService {
       }).toString();
       const signature = this.createSignature(queryParams);
       const finalQuery = `${queryParams}&signature=${signature}`;
-
-      console.log(`Fetching wallet balance for Binance account: ${this.label}`);
       const response = await this.apiClient.get(
         `/sapi/v1/asset/wallet/balance?${finalQuery}`,
       );
-
-      console.log("Binance API response status:", response.status);
 
       // The response is an array of wallet objects, not an AccountInfo object
       const wallets = response.data;
@@ -193,7 +199,7 @@ export class BinanceService {
         return [];
       }
 
-      if (parseFloat(spotWallet.balance) > 0) {
+      if (Number.parseFloat(spotWallet.balance) > 0) {
         return [
           {
             asset: "TOTAL",
@@ -204,9 +210,11 @@ export class BinanceService {
       }
 
       return [];
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(`Failed to fetch wallet balance for ${this.label}:`, error);
-      throw new Error(`Failed to fetch wallet balance: ${error.message}`);
+      throw new Error(
+        `Failed to fetch wallet balance: ${(error as Error).message}`,
+      );
     }
   }
 
@@ -230,9 +238,11 @@ export class BinanceService {
       const accountInfo = response.data as AccountInfo;
 
       return accountInfo;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(`Failed to fetch account info for ${this.label}:`, error);
-      throw new Error(`Failed to fetch account info: ${error.message}`);
+      throw new Error(
+        `Failed to fetch account info: ${(error as Error).message}`,
+      );
     }
   }
 
@@ -245,16 +255,19 @@ export class BinanceService {
 
       const nonZeroBalances = accountInfo.balances.filter(
         (balance) =>
-          parseFloat(balance.free) > 0 || parseFloat(balance.locked) > 0,
+          Number.parseFloat(balance.free) > 0 ||
+          Number.parseFloat(balance.locked) > 0,
       );
 
       return nonZeroBalances;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(
         `Failed to fetch non-zero balances for ${this.label}:`,
         error,
       );
-      throw new Error(`Failed to fetch non-zero balances: ${error.message}`);
+      throw new Error(
+        `Failed to fetch non-zero balances: ${(error as Error).message}`,
+      );
     }
   }
 
@@ -271,8 +284,8 @@ export class BinanceService {
         this.getAveragePrice("BTCNGN"),
       ]);
       return { btcUsdt, btcNgn };
-    } catch (error: any) {
-      throw new Error(`Failed to fetch rates: ${error.message}`);
+    } catch (error: unknown) {
+      throw new Error(`Failed to fetch rates: ${(error as Error).message}`);
     }
   }
 
@@ -281,13 +294,15 @@ export class BinanceService {
    */
   async getUserAssets(asset?: string): Promise<AssetBalance[]> {
     const timestamp = Date.now();
-    const params: Record<string, any> = { timestamp };
+    const params: Record<string, string | number | boolean> = { timestamp };
     if (asset) {
       params.asset = asset;
     }
     params.needBtcValuation = false;
 
-    const queryString = new URLSearchParams(params).toString();
+    const queryString = new URLSearchParams(
+      Object.entries(params).map(([key, value]) => [key, String(value)]),
+    ).toString();
     const signature = this.createSignature(queryString);
 
     const response = await this.apiClient.post(
@@ -296,10 +311,13 @@ export class BinanceService {
       { params: { ...params, signature } },
     );
 
-    const assets: any[] = response.data;
+    const assets: { asset: string; free: string; locked: string }[] =
+      response.data;
 
     return assets
-      .filter((a) => parseFloat(a.free) > 0 || parseFloat(a.locked) > 0)
+      .filter(
+        (a) => Number.parseFloat(a.free) > 0 || Number.parseFloat(a.locked) > 0,
+      )
       .map((a) => ({
         asset: a.asset,
         free: a.free,
@@ -337,33 +355,36 @@ export class BinanceService {
             (item) => item.asset === asset,
           );
           if (assetBalance) {
-            const fmt = (s: string) => parseFloat(s).toFixed(8);
+            const fmt = (s: string) => Number.parseFloat(s).toFixed(8);
             const free = fmt(assetBalance.free || "0");
             const locked = fmt(assetBalance.locked || "0");
             const total = fmt(
-              (parseFloat(free) + parseFloat(locked)).toString(),
+              (Number.parseFloat(free) + Number.parseFloat(locked)).toString(),
             );
 
             return { free, locked, total };
           }
         } else if (response.data.length > 0) {
           const assetBalance = response.data[0];
-          const fmt = (s: string) => parseFloat(s).toFixed(8);
+          const fmt = (s: string) => Number.parseFloat(s).toFixed(8);
           const free = fmt(assetBalance.free || "0");
           const locked = fmt(assetBalance.locked || "0");
-          const total = fmt((parseFloat(free) + parseFloat(locked)).toString());
+          const total = fmt(
+            (Number.parseFloat(free) + Number.parseFloat(locked)).toString(),
+          );
 
           return { free, locked, total };
         }
       }
       return { free: "0", locked: "0", total: "0" };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(
         `Failed to fetch funding wallet balance for ${asset}:`,
         error,
       );
-      console.error("Error details:", error.response?.data || error.message);
-      return { free: "0", locked: "0", total: "0" };
+      throw new Error(
+        `Failed to fetch funding wallet balance: ${(error as Error).message}`,
+      );
     }
   }
 }

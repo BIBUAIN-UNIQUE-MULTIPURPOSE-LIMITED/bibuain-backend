@@ -1,11 +1,11 @@
 import {
-  Entity,
-  PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
-  UpdateDateColumn,
   DeleteDateColumn,
+  Entity,
   Index,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from "typeorm";
 
 export enum TemplateType {
@@ -70,7 +70,7 @@ export class AutoMessageTemplate {
   })
   followUpContent!: {
     content: string;
-    conditions?: Record<string, any>;
+    conditions?: Record<string, unknown>;
   }[];
 
   @Column({

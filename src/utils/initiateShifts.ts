@@ -1,8 +1,8 @@
 import cron from "node-cron";
-import { In, Between } from "typeorm";
+import { Between, In } from "typeorm";
 import dbConnect from "../config/database";
+import { Shift, ShiftEndType, ShiftStatus, ShiftType } from "../models/shift";
 import { User, UserType } from "../models/user";
-import { Shift, ShiftType, ShiftStatus, ShiftEndType } from "../models/shift";
 
 // Cron schedules for testing / production
 const SHIFT_TIMES = {

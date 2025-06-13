@@ -1,23 +1,15 @@
-import { Request, Response, NextFunction, RequestHandler } from "express";
+import type { NextFunction, RequestHandler, Response } from "express";
+import { validationResult } from "express-validator";
 import dbConnect from "../config/database";
-import bcrypt from "bcryptjs";
+import type { UserRequest } from "../middlewares/authenticate";
 import { Account } from "../models/accounts";
 import { User } from "../models/user";
 import ErrorHandler from "../utils/errorHandler";
-import { ActivityLog, ActivityType } from "../models/activityLogs";
-import { validationResult } from "express-validator";
-import { UserRequest } from "../middlewares/authenticate";
 
-const ACCOUNT_ENCRYPTION_SALT_ROUNDS = 12;
-
-const encryptAccountCredentials = async (
-  apiKey: string,
-  apiSecret: string,
-) => ({
-  encryptedKey: await bcrypt.hash(apiKey, ACCOUNT_ENCRYPTION_SALT_ROUNDS),
-  encryptedSecret: await bcrypt.hash(apiSecret, ACCOUNT_ENCRYPTION_SALT_ROUNDS),
-});
-
+/*
+ * Accounts Controller
+ * Handles CRUD operations for Forex accounts
+ */
 export const createAccount: RequestHandler = async (
   req: UserRequest,
   res: Response,
@@ -78,7 +70,11 @@ export const createAccount: RequestHandler = async (
   }
 };
 
-// Update Account Details
+/*
+ * Update Account
+ * Allows users to update their Forex account details
+ * Validates input and checks for existing usernames on the same platform
+ */
 export const updateAccount: RequestHandler = async (
   req: UserRequest,
   res: Response,
@@ -99,7 +95,6 @@ export const updateAccount: RequestHandler = async (
     }
 
     const accountRepo = dbConnect.getRepository(Account);
-    const userRepo = dbConnect.getRepository(User);
 
     const account = await accountRepo.findOne({
       where: { id },
@@ -146,7 +141,11 @@ export const updateAccount: RequestHandler = async (
   }
 };
 
-// Delete Account
+/*
+ * Delete Account
+ * Permanently deletes a Forex account by ID
+ * Ensures the account exists before deletion
+ */
 export const deleteAccount: RequestHandler = async (
   req: UserRequest,
   res: Response,
@@ -176,7 +175,11 @@ export const deleteAccount: RequestHandler = async (
   }
 };
 
-// Get All Accounts for User
+/*
+ * Get All Accounts
+ * Retrieves all Forex accounts with limited details
+ * Ensures the user is authenticated before accessing accounts
+ */
 export const getAllAccounts: RequestHandler = async (
   req: UserRequest,
   res: Response,
@@ -204,7 +207,11 @@ export const getAllAccounts: RequestHandler = async (
   }
 };
 
-// Get Single Account Details
+/*
+ * Get Single Account
+ * Retrieves a single Forex account by ID
+ * Ensures the account exists and limits sensitive data exposure
+ */
 export const getSingleAccount: RequestHandler = async (
   req: UserRequest,
   res: Response,

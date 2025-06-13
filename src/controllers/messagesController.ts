@@ -1,10 +1,10 @@
-import { Response, NextFunction } from "express";
+import type { NextFunction, Response } from "express";
+import type { UserRequest } from "middlewares/authenticate";
 import dbConnect from "../config/database";
+import { Chat } from "../models/chats";
 import { Message } from "../models/messages";
 import { User } from "../models/user";
-import { Chat } from "../models/chats";
 import ErrorHandler from "../utils/errorHandler";
-import { UserRequest } from "middlewares/authenticate";
 
 // Create a new message
 export const createMessage = async (

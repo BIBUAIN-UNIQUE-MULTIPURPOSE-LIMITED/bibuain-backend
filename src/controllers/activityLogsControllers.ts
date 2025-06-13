@@ -1,12 +1,15 @@
-import { RequestHandler } from "express";
+import type { RequestHandler } from "express";
+import type { UserRequest } from "middlewares/authenticate";
+import { Between } from "typeorm";
 import dbConnect from "../config/database";
 import { ActivityLog, ActivityType } from "../models/activityLogs";
 import { User } from "../models/user";
 import ErrorHandler from "../utils/errorHandler";
-import { Between } from "typeorm";
-import { UserRequest } from "middlewares/authenticate";
 
-// Create a new activity log
+/*
+ * Activity Logs Controller
+ * Handles CRUD operations for activity logs
+ */
 export const createActivityLog: RequestHandler = async (
   req: UserRequest,
   res,
@@ -16,12 +19,10 @@ export const createActivityLog: RequestHandler = async (
     const { activity, description, details, isSystemGenerated } = req.body;
     const userId = req.user?.id;
 
-    // Validate input
     if (!activity || !description) {
       throw new ErrorHandler("Activity and description are required", 400);
     }
 
-    // Validate activity type
     if (!Object.values(ActivityType).includes(activity)) {
       throw new ErrorHandler("Invalid activity type", 400);
     }
@@ -58,7 +59,10 @@ export const createActivityLog: RequestHandler = async (
   }
 };
 
-// Delete activity logs (Admin only)
+/*
+ * Delete activity logs by IDs
+ * Only accessible by admin users
+ */
 export const deleteActivityLogs: RequestHandler = async (
   req: UserRequest,
   res,
@@ -68,19 +72,16 @@ export const deleteActivityLogs: RequestHandler = async (
     const { ids } = req.body;
     const userType = req.user?.userType;
 
-    // Check if user is admin
-    if (userType !== "admin") {
+    if (userType != "admin") {
       throw new ErrorHandler("Unauthorized access", 403);
     }
 
-    // Validate input
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       throw new ErrorHandler("Valid log IDs array is required", 400);
     }
 
     const activityLogRepo = dbConnect.getRepository(ActivityLog);
 
-    // Delete logs
     const result = await activityLogRepo.delete(ids);
 
     if (result.affected === 0) {
@@ -96,7 +97,10 @@ export const deleteActivityLogs: RequestHandler = async (
   }
 };
 
-// Get activity logs with filters
+/*
+ * Get activity logs with filters and pagination
+ * Supports filtering by date range, activity type, user ID, user role, and system-generated flag
+ */
 export const getActivityLogs: RequestHandler = async (
   req: UserRequest,
   res,
@@ -119,7 +123,7 @@ export const getActivityLogs: RequestHandler = async (
     const activityLogRepo = dbConnect.getRepository(ActivityLog);
 
     // Build where conditions
-    const whereConditions: any = {};
+    const whereConditions: Record<string, any> = {};
 
     if (startDate && endDate) {
       whereConditions.timestamp = Between(
@@ -148,7 +152,7 @@ export const getActivityLogs: RequestHandler = async (
     const skip = (Number(page) - 1) * Number(limit);
 
     // Get logs with pagination and filters
-    const [logs, total] = await activityLogRepo.findAndCount({
+    const logs = await activityLogRepo.findAndCount({
       where: whereConditions,
       relations: ["user"],
       order: { [sortBy as string]: sortOrder },
@@ -156,24 +160,9 @@ export const getActivityLogs: RequestHandler = async (
       take: Number(limit),
     });
 
-    // Calculate pagination metadata
-    const totalPages = Math.ceil(total / Number(limit));
-    const hasNextPage = Number(page) < totalPages;
-    const hasPreviousPage = Number(page) > 1;
-
     res.json({
       success: true,
-      // data: {
-      //   logs,
-      //   pagination: {
-      //     total,
-      //     totalPages,
-      //     currentPage: Number(page),
-      //     hasNextPage,
-      //     hasPreviousPage,
-      //   },
       data: logs,
-      // },
       message: "Activity logs retrieved successfully",
     });
   } catch (error) {
@@ -181,7 +170,10 @@ export const getActivityLogs: RequestHandler = async (
   }
 };
 
-// Get single activity log bxy ID
+/*
+ * Get a single activity log by ID
+ * Returns the log details along with the associated user
+ */
 export const getActivityLogById: RequestHandler = async (
   req: UserRequest,
   res,

@@ -1,8 +1,7 @@
-import { Request, Response, NextFunction, RequestHandler } from "express";
+import type { NextFunction, RequestHandler, Response } from "express";
+import type { Server } from "socket.io";
 import dbConnect from "../config/database";
-import { validationResult } from "express-validator";
-import { UserRequest } from "../middlewares/authenticate";
-import ErrorHandler from "../utils/errorHandler";
+import type { UserRequest } from "../middlewares/authenticate";
 import {
   Notification,
   NotificationType,
@@ -10,8 +9,12 @@ import {
 } from "../models/notifications";
 import { User } from "../models/user";
 import { io } from "../server";
+import ErrorHandler from "../utils/errorHandler";
 
-// Get all notifications for a user with pagination and filters
+/*
+ * Fetch all notifications for a user
+ * Returns notifications with related account information
+ */
 export const getUserNotifications: RequestHandler = async (
   req: UserRequest,
   res: Response,
@@ -28,8 +31,6 @@ export const getUserNotifications: RequestHandler = async (
       where: { user: { id: userId } },
       relations: ["relatedAccount"],
     });
-
-    console.log(`Here are the notifications`, notifications);
     res.json({
       success: true,
       data: notifications,
@@ -39,7 +40,9 @@ export const getUserNotifications: RequestHandler = async (
   }
 };
 
-// Mark all notifications as read for a user
+/*
+ * mark unread notifications for a user as read
+ */
 export const markAllNotificationsAsRead: RequestHandler = async (
   req: UserRequest,
   res: Response,
@@ -80,7 +83,10 @@ export const markAllNotificationsAsRead: RequestHandler = async (
   }
 };
 
-// Mark a single notification as read
+/*
+ * Mark a specific notification as read
+ * Emits a socket event for real-time updates
+ */
 export const markNotificationAsRead: RequestHandler = async (
   req: UserRequest,
   res: Response,
@@ -125,7 +131,10 @@ export const markNotificationAsRead: RequestHandler = async (
   }
 };
 
-// Delete a notification
+/*
+ * Delete a specific notification
+ * Emits a socket event for real-time updates
+ */
 export const deleteNotification: RequestHandler = async (
   req: UserRequest,
   res: Response,
@@ -168,8 +177,11 @@ export const deleteNotification: RequestHandler = async (
   }
 };
 
-// Setup socket handlers for notifications
-export const setupNotificationSocket = (io: any) => {
+/*
+ * Setup WebSocket for notifications
+ * Handles joining/leaving notification rooms and marking notifications as read
+ */
+export const setupNotificationSocket = (io: Server) => {
   io.on("connection", (socket: any) => {
     // Join notification room
     socket.on("joinNotificationRoom", (userId: string) => {
@@ -212,7 +224,10 @@ export const setupNotificationSocket = (io: any) => {
   });
 };
 
-// Controller for marking All notifications as complete
+/*
+ * Mark all notifications as completed (read)
+ * This is a bulk operation to mark all unread notifications as read
+ */
 export const markAllNotificationsAsCompleted: RequestHandler = async (
   req: UserRequest,
   res: Response,
@@ -245,7 +260,11 @@ export const markAllNotificationsAsCompleted: RequestHandler = async (
   }
 };
 
-// Create a notification (utility function for internal use)
+/*
+ * Create a new notification
+ * This function creates a notification and emits it via WebSocket
+ * It can be used for various types of notifications (system, user, etc.)
+ */
 export const createNotification = async ({
   userId,
   title,
@@ -264,8 +283,6 @@ export const createNotification = async ({
   try {
     const userRepo = dbConnect.getRepository(User);
     const notificationRepo = dbConnect.getRepository(Notification);
-    console.log(`This is User ID`, userId);
-    // Validate the user exists
     const user = await userRepo.findOne({ where: { id: userId } });
     if (!user) {
       throw new Error("User not found");
@@ -290,13 +307,11 @@ export const createNotification = async ({
       description,
       type,
       priority,
-      relatedAccount: relatedAccount ? { id: relatedAccount.id } : undefined, // Assign reference properly
+      relatedAccount: relatedAccount ? { id: relatedAccount.id } : undefined,
       read: false,
     });
 
     const savedNotification = await notificationRepo.save(notification);
-    console.log(savedNotification);
-    // Emit real-time notification via WebSocket
     if (io) {
       io.to(`notifications:${userId}`).emit("newNotification", {
         type: "NEW_NOTIFICATION",
@@ -311,6 +326,11 @@ export const createNotification = async ({
   }
 };
 
+/*
+ * Create a new notification handler
+ * This is an Express.js request handler to create a notification
+ * It validates input and calls the createNotification function
+ */
 export const createNotificationHandler: RequestHandler = async (
   req,
   res,
@@ -340,7 +360,6 @@ export const createNotificationHandler: RequestHandler = async (
       relatedAccountId,
     });
 
-    // send response, but do NOT return it
     res.status(201).json({
       success: true,
       data: notification,

@@ -1,14 +1,14 @@
 import { Router } from "express";
-import { body, param } from "express-validator";
-import { authenticate } from "../middlewares/authenticate";
-import validateRequest from "../middlewares/validateRequest";
+import { param } from "express-validator";
+import { uploadSingleFile } from "../config/multer";
 import {
   createMessage,
-  getMessages,
   deleteMessage,
+  getMessages,
   markMessageAsSeen,
 } from "../controllers/messagesController";
-import { uploadMultipleFiles, uploadSingleFile } from "../config/multer";
+import { authenticate } from "../middlewares/authenticate";
+import validateRequest from "../middlewares/validateRequest";
 
 const router: any = Router();
 

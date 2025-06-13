@@ -2,8 +2,8 @@ import { Router } from "express";
 import {
   createActivityLog,
   deleteActivityLogs,
-  getActivityLogs,
   getActivityLogById,
+  getActivityLogs,
 } from "../controllers/activityLogsControllers";
 import { authenticate, roleAuth } from "../middlewares/authenticate";
 import { UserType } from "../models/user";

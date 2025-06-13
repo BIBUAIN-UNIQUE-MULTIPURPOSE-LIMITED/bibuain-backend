@@ -1,6 +1,6 @@
-import { Request, Response, NextFunction } from "express";
-import jwt, { JwtPayload } from "jsonwebtoken";
-import { User, UserType } from "../models/user"; // Import User model and UserType enum
+import type { NextFunction, Request, Response } from "express";
+import jwt, { type JwtPayload } from "jsonwebtoken";
+import { UserType } from "../models/user";
 
 const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 
@@ -9,7 +9,7 @@ declare module "jsonwebtoken" {
   export interface JwtPayload {
     id: string;
     email: string;
-    userType: UserType; // Use UserType enum here
+    userType: UserType;
   }
 }
 
@@ -34,6 +34,7 @@ export const authenticate = (
     next();
   } catch (err) {
     res.status(401).json({ message: "Invalid or expired token" });
+    console.error("Authentication error:", err);
   }
 };
 
@@ -60,7 +61,7 @@ export const isAdmin = (
 export const roleAuth = (requiredUserType: UserType | UserType[]) => {
   return (req: UserRequest, res: Response, next: NextFunction): void => {
     try {
-      const user = req.user; // Directly accessing user from the request
+      const user = req.user;
 
       if (!user) {
         res.status(401).json({ message: "Authentication required" });

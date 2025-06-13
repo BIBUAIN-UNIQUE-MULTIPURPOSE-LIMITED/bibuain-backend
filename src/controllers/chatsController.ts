@@ -1,13 +1,17 @@
-import { Request, Response, NextFunction } from "express";
-import { Chat } from "../models/chats";
-import { User } from "../models/user";
-import dbConnect from "../config/database";
+import type { NextFunction, Response } from "express";
 import { validationResult } from "express-validator";
-import ErrorHandler from "../utils/errorHandler";
-import { UserRequest } from "../middlewares/authenticate";
+import { In } from "typeorm";
+import dbConnect from "../config/database";
+import type { UserRequest } from "../middlewares/authenticate";
+import { Chat } from "../models/chats";
 import { Message } from "../models/messages";
+import { User } from "../models/user";
+import ErrorHandler from "../utils/errorHandler";
 
-// Create a Chat for Two Participants
+/*
+ * Chats Controller
+ * Handles CRUD operations for chats
+ */
 export const createChat = async (
   req: UserRequest,
   res: Response,
@@ -34,7 +38,9 @@ export const createChat = async (
     const chatRepo = dbConnect.getRepository(Chat);
 
     // Verify that all participants exist in the system
-    const users = await userRepo.findByIds(participants);
+    const users = await userRepo.findBy({
+      id: In(participants),
+    });
     if (users.length !== participants.length) {
       throw new ErrorHandler("One or more participants not found", 404);
     }
@@ -71,7 +77,10 @@ export const createChat = async (
   }
 };
 
-// Get All Chats for A User
+/*
+ * Get all chats for the authenticated user
+ * Returns a list of chats where the user is a participant
+ */
 export const getChats = async (
   req: UserRequest,
   res: Response,
@@ -103,7 +112,10 @@ export const getChats = async (
   }
 };
 
-// Get a single chat by ID
+/*
+ * Get a specific chat by ID
+ * Returns the chat details along with participants and messages
+ */
 export const getChat = async (
   req: UserRequest,
   res: Response,
@@ -119,14 +131,13 @@ export const getChat = async (
     const chatRepo = dbConnect.getRepository(Chat);
     const chat = await chatRepo.findOne({
       where: { id: chatId },
-      relations: ["participants", "messages", "messages.sender"], // Load sender relation
+      relations: ["participants", "messages", "messages.sender"],
     });
 
     if (!chat) {
       throw new ErrorHandler("Chat not found", 404);
     }
 
-    // Ensure the user is a participant of the chat
     if (!chat.participants.some((user) => user.id === userId)) {
       throw new ErrorHandler("You are not a participant of this chat", 403);
     }
@@ -140,7 +151,10 @@ export const getChat = async (
   }
 };
 
-// Delete A Chat
+/*
+ * Delete a chat and its messages
+ * Ensures the user is a participant before deletion
+ */
 export const deleteChat = async (
   req: UserRequest,
   res: Response,

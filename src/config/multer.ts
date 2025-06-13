@@ -1,6 +1,6 @@
-import multer, { FileFilterCallback } from "multer";
 import path from "path";
-import { Request } from "express";
+import type { Request } from "express";
+import multer, { type FileFilterCallback } from "multer";
 import errorHandler from "../utils/errorHandler";
 
 // Configure storage

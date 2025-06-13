@@ -3,15 +3,15 @@ import { body, param, query } from "express-validator";
 import {
   clockIn,
   clockOut,
-  startBreak,
   endBreak,
-  getShiftMetrics,
   forceEndShift,
   getCurrentShift,
+  getShiftMetrics,
+  startBreak,
 } from "../controllers/shiftController";
 import { authenticate, roleAuth } from "../middlewares/authenticate";
 import validateRequest from "../middlewares/validateRequest";
-import { User, UserType } from "../models/user";
+import { UserType } from "../models/user";
 
 const router: any = express.Router();
 

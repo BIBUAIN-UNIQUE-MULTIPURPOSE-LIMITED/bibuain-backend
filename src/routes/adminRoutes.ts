@@ -1,4 +1,5 @@
 import express from "express";
+import { body, param } from "express-validator";
 import {
   createAdminUser,
   createUser,
@@ -7,10 +8,9 @@ import {
   getAllUsers,
   getSingleUser,
 } from "../controllers/adminController";
-import validateRequest from "../middlewares/validateRequest";
 import { authenticate, isAdmin, roleAuth } from "../middlewares/authenticate";
-import { body, param } from "express-validator";
-import { User, UserType } from "../models/user";
+import validateRequest from "../middlewares/validateRequest";
+import { UserType } from "../models/user";
 
 const router: any = express.Router();
 

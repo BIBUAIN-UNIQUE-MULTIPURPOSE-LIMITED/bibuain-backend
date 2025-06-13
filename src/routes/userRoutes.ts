@@ -1,24 +1,21 @@
 import { Router } from "express";
-import { body, param, query } from "express-validator";
+import { body, param } from "express-validator";
+import { uploadSingleFile } from "../config/multer";
 import {
+  changePassword,
+  editUserDetails,
+  enableTwoFa,
+  forgotPassword,
+  getCurrentUser,
   login,
   logout,
-  enableTwoFa,
-  verifyTwoFa,
-  requestEmailVerification,
-  verifyEmail,
-  requestPasswordReset,
   resetPassword,
-  getCurrentUser,
-  editUserDetails,
-  changePassword,
-  forgotPassword,
-  // updateClockStatus,
+  verifyEmail,
+  verifyTwoFa,
 } from "../controllers/AuthController";
+import { getAllUsers, getSingleUser } from "../controllers/adminController";
 import { authenticate } from "../middlewares/authenticate";
 import validateRequest from "../middlewares/validateRequest";
-import { getAllUsers, getSingleUser } from "../controllers/adminController";
-import { uploadSingleFile } from "../config/multer";
 
 const router: any = Router();
 
@@ -33,7 +30,6 @@ router.post(
   validateRequest,
   login,
 );
-// router.put("/clock-status", updateClockStatus);
 
 router.get("/me", authenticate, getCurrentUser);
 

@@ -1,18 +1,18 @@
 import { Router } from "express";
 import {
   addBank,
-  getAllBanks,
-  getFreeBanks,
-  getFundedBanks,
-  updateBank,
   deleteBank,
+  getAllBanks,
   getBankById,
-  useBank,
-  reloadFreshBanks,
-  getUsedBanks,
-  getFreshBanks,
-  getRolloverBanks,
   getBanksForShift,
+  getFreeBanks,
+  getFreshBanks,
+  getFundedBanks,
+  getRolloverBanks,
+  getUsedBanks,
+  reloadFreshBanks,
+  updateBank,
+  useBank,
 } from "../controllers/bankController";
 import { authenticate, roleAuth } from "../middlewares/authenticate";
 import { UserType } from "../models/user";
