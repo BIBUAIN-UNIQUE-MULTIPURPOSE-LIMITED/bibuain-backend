@@ -17,12 +17,19 @@ import notificationRoutes from "./routes/notificationRoutes";
 import shiftRoutes from "./routes/shiftRoutes";
 import accountRoutes from "./routes/accountRoutes";
 import { reloadFreshBanks } from "./controllers/bankController";
-import { pollAndAssignLiveTrades, processTradeQueue } from "./controllers/tradeController";
+import {
+  pollAndAssignLiveTrades,
+  processTradeQueue,
+} from "./controllers/tradeController";
 const app = express();
 
 // CORS Configuration
 const corsOptions = {
-  origin: ["https://app.bibuain.ng", "http://localhost:5173", "https://main.d251fvvwfaaim4.amplifyapp.com"],
+  origin: [
+    "https://app.bibuain.ng",
+    "http://localhost:5173",
+    "https://main.d251fvvwfaaim4.amplifyapp.com",
+  ],
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"],
@@ -46,33 +53,36 @@ app.use(express.urlencoded({ extended: true }));
 
 // initializeShiftCrons();
 
-if (process.env.NODE_ENV !== 'test') {
+if (process.env.NODE_ENV !== "test") {
   // poll & assign every 5 seconds
   cron.schedule(
-    '*/6 * * * * *',
+    "*/6 * * * * *",
     async () => {
-      console.log('🔄 [Cron] pollAndAssignLiveTrades @', new Date().toISOString());
+      console.log(
+        "🔄 [Cron] pollAndAssignLiveTrades @",
+        new Date().toISOString(),
+      );
       try {
         await pollAndAssignLiveTrades();
       } catch (e) {
-        console.error('[Cron] pollAndAssignLiveTrades error:', e);
+        console.error("[Cron] pollAndAssignLiveTrades error:", e);
       }
     },
-    { scheduled: true, timezone: 'Africa/Lagos' }
+    { scheduled: true, timezone: "Africa/Lagos" },
   );
 
   // process the queue every 5 seconds
   cron.schedule(
-    '*/5 * * * * *',
+    "*/5 * * * * *",
     async () => {
-      console.log('🔄 [Cron] processTradeQueue @', new Date().toISOString());
+      console.log("🔄 [Cron] processTradeQueue @", new Date().toISOString());
       try {
         await processTradeQueue();
       } catch (e) {
-        console.error('[Cron] processTradeQueue error:', e);
+        console.error("[Cron] processTradeQueue error:", e);
       }
     },
-    { scheduled: true, timezone: 'Africa/Lagos' }
+    { scheduled: true, timezone: "Africa/Lagos" },
   );
 }
 
@@ -89,7 +99,7 @@ cron.schedule(
   {
     scheduled: true,
     timezone: "Africa/Lagos",
-  }
+  },
 );
 
 // API Routes

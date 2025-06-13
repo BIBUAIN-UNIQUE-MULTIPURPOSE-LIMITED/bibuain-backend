@@ -28,7 +28,7 @@ export enum TradeStatus {
   ESCALATED = "escalated",
   PAID = "paid",
   SUCCESSFUL = "successful",
-  EXPIRED = "expired"
+  EXPIRED = "expired",
 }
 
 export enum FeedbackType {
@@ -48,22 +48,22 @@ export class Trade {
   tradeHash!: string;
 
   @ManyToOne(() => Trade, { nullable: true })
-  @JoinColumn({ name: 'parent_trade_id' })
+  @JoinColumn({ name: "parent_trade_id" })
   parentTrade?: Trade;
 
-  @OneToMany(() => Trade, trade => trade.parentTrade)
+  @OneToMany(() => Trade, (trade) => trade.parentTrade)
   childTrades?: Trade[];
 
   @ManyToOne(() => User, { nullable: true })
-  @JoinColumn({ name: 'escalated_by_id' })
+  @JoinColumn({ name: "escalated_by_id" })
   escalatedBy?: User;
 
   @ManyToOne(() => User, { nullable: true })
-  @JoinColumn({ name: 'assigned_cc_agent_id' })
+  @JoinColumn({ name: "assigned_cc_agent_id" })
   assignedCcAgent?: User;
 
   @ManyToOne(() => User, { nullable: true })
-  @JoinColumn({ name: 'assigned_payer_id' })
+  @JoinColumn({ name: "assigned_payer_id" })
   assignedPayer?: User;
 
   @Column({
@@ -78,7 +78,11 @@ export class Trade {
   @Column({ type: "enum", enum: TradePlatform, nullable: true })
   platform!: TradePlatform;
 
-  @Column({ type: "enum", enum: TradeStatus, default: TradeStatus.ACTIVE_FUNDED })
+  @Column({
+    type: "enum",
+    enum: TradeStatus,
+    default: TradeStatus.ACTIVE_FUNDED,
+  })
   status!: TradeStatus;
 
   @Column({ type: "varchar", nullable: true })
@@ -109,7 +113,11 @@ export class Trade {
   })
   cryptoAmountRequested!: number;
 
-  @Column({ type: 'timestamptz', nullable: true, comment: 'Original trade time from platform' })
+  @Column({
+    type: "timestamptz",
+    nullable: true,
+    comment: "Original trade time from platform",
+  })
   platformCreatedAt!: Date;
 
   @Column({
@@ -130,13 +138,13 @@ export class Trade {
 
   @Column({ type: "boolean", default: false })
   flagged!: boolean;
-  
+
   @Column({ type: "boolean", default: false })
   isEscalated!: boolean;
 
   @Column({ type: "boolean", default: false })
   wasEscalated!: boolean;
-  
+
   @Column({ type: "text", nullable: true })
   escalationReason!: string | null;
 
@@ -201,7 +209,7 @@ export class Trade {
     type: "numeric",
     precision: 20,
     scale: 8,
-    nullable: true
+    nullable: true,
   })
   btcRate?: number;
 
@@ -224,7 +232,7 @@ export class Trade {
 
   @Column("float", { nullable: true })
   btcNgnRate!: number;
-  
+
   @Column("float", { nullable: true })
   usdtNgnRate!: number;
 
@@ -243,41 +251,41 @@ export class Trade {
   }>;
 
   // Queue Management Properties
-  @Column({ 
-    type: "int", 
+  @Column({
+    type: "int",
     nullable: true,
-    comment: "Position in the trade queue (1-based index)" 
+    comment: "Position in the trade queue (1-based index)",
   })
   @Index()
   queuePosition?: number | null;
 
-  @Column({ 
-    type: "timestamptz", 
+  @Column({
+    type: "timestamptz",
     nullable: true,
-    comment: "When the trade was added to the queue" 
+    comment: "When the trade was added to the queue",
   })
   @Index()
   queuedAt?: Date | null;
 
-  @Column({ 
-    type: "timestamptz", 
+  @Column({
+    type: "timestamptz",
     nullable: true,
-    comment: "Last time the queue was checked/processed for this trade" 
+    comment: "Last time the queue was checked/processed for this trade",
   })
   lastQueueCheck?: Date | null;
-  
+
   @CreateDateColumn({
-    type: 'timestamptz',
-    default: () => 'CURRENT_TIMESTAMP',
-    comment: 'UTC timestamp of when the row was created',
+    type: "timestamptz",
+    default: () => "CURRENT_TIMESTAMP",
+    comment: "UTC timestamp of when the row was created",
   })
   createdAt!: Date;
 
   @UpdateDateColumn({
-    type: 'timestamptz',
-    default: () => 'CURRENT_TIMESTAMP',
-    onUpdate: 'CURRENT_TIMESTAMP',
-    comment: 'UTC timestamp of last update',
+    type: "timestamptz",
+    default: () => "CURRENT_TIMESTAMP",
+    onUpdate: "CURRENT_TIMESTAMP",
+    comment: "UTC timestamp of last update",
   })
   updatedAt!: Date;
 }

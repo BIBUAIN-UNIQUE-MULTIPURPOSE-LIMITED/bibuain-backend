@@ -10,7 +10,7 @@ const errorHandlerMiddleware = (
   err: ErrorHandler,
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): void => {
   if (process.env.NODE_ENV !== "production") {
     console.error(`Error Stack: ${err.stack}`);

@@ -8,22 +8,29 @@ import ErrorHandler from "../utils/errorHandler";
 export const addBank = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
-    const { bankName, accountName, accountNumber, additionalNotes, funds, tag } = req.body;
+    const {
+      bankName,
+      accountName,
+      accountNumber,
+      additionalNotes,
+      funds,
+      tag,
+    } = req.body;
 
     // Validation
     if (!bankName || !accountName || !accountNumber) {
       throw new ErrorHandler(
         "All fields (Bank Name, Account Name, Account Number) are required.",
-        400
+        400,
       );
     }
     if (accountNumber.length < 10 || accountNumber.length > 20) {
       throw new ErrorHandler(
         "Account Number must be between 10 and 20 characters.",
-        400
+        400,
       );
     }
 
@@ -52,7 +59,7 @@ export const addBank = async (
 export const getAllBanks = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const bankRepo = dbConnect.getRepository(Bank);
@@ -71,7 +78,7 @@ export const getAllBanks = async (
 export const getFreeBanks = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const bankRepo = dbConnect.getRepository(Bank);
@@ -90,7 +97,7 @@ export const getFreeBanks = async (
 export const getFundedBanks = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const bankRepo = dbConnect.getRepository(Bank);
@@ -101,7 +108,7 @@ export const getFundedBanks = async (
     });
 
     // Massage the response so each bank has a usedBy: fullName | null
-    const data = fundedBanks.map(bank => ({
+    const data = fundedBanks.map((bank) => ({
       ...bank,
       usedBy: null,
     }));
@@ -119,7 +126,7 @@ export const getFundedBanks = async (
 export const getBankById = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { id } = req.params;
@@ -143,11 +150,18 @@ export const getBankById = async (
 export const updateBank = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { id } = req.params;
-    const { bankName, accountName, accountNumber, additionalNotes, funds, tag } = req.body;
+    const {
+      bankName,
+      accountName,
+      accountNumber,
+      additionalNotes,
+      funds,
+      tag,
+    } = req.body;
 
     const bankRepo = dbConnect.getRepository(Bank);
     const bank = await bankRepo.findOne({ where: { id } });
@@ -193,7 +207,7 @@ export const updateBank = async (
 export const useBank = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { id } = req.params;
@@ -203,7 +217,7 @@ export const useBank = async (
     if (typeof amountUsed !== "number" || !shiftId) {
       throw new ErrorHandler(
         "Request body must include numeric `amountUsed` and `shiftId`.",
-        400
+        400,
       );
     }
 
@@ -215,9 +229,9 @@ export const useBank = async (
     if (!bank) throw new ErrorHandler("Bank not found.", 404);
 
     // Fetch shift
-    const shift = await shiftRepo.findOne({ 
+    const shift = await shiftRepo.findOne({
       where: { id: shiftId },
-      relations: ["bank"]
+      relations: ["bank"],
     });
     if (!shift) throw new ErrorHandler("Shift not found.", 404);
 
@@ -235,7 +249,7 @@ export const useBank = async (
     // Deduct funds and update status
     const remaining = bank.funds - amountUsed;
     bank.funds = Math.max(0, remaining);
-    
+
     // Update status based on remaining funds
     bank.tag = bank.funds > 0 ? BankTag.USED : BankTag.ROLLOVER;
 
@@ -244,9 +258,9 @@ export const useBank = async (
     shift.bank = bank;
 
     // Add log entry
-    const logEntry = { 
-      description: `Assigned to shift ${shiftId} with initial amount used ${amountUsed}`, 
-      createdAt: new Date() 
+    const logEntry = {
+      description: `Assigned to shift ${shiftId} with initial amount used ${amountUsed}`,
+      createdAt: new Date(),
     };
     bank.logs = bank.logs ? [...bank.logs, logEntry] : [logEntry];
 
@@ -262,8 +276,8 @@ export const useBank = async (
         tag: bank.tag,
         shiftId: shift.id,
         logs: bank.logs,
-        bankName: bank.bankName, 
-        accountNumber: bank.accountNumber
+        bankName: bank.bankName,
+        accountNumber: bank.accountNumber,
       },
     });
   } catch (error) {
@@ -275,7 +289,7 @@ export const useBank = async (
 export const deleteBank = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { id } = req.params;
@@ -284,7 +298,9 @@ export const deleteBank = async (
     if (!bank) throw new ErrorHandler("Bank not found.", 404);
 
     await bankRepo.remove(bank);
-    res.status(200).json({ success: true, message: "Bank deleted successfully." });
+    res
+      .status(200)
+      .json({ success: true, message: "Bank deleted successfully." });
   } catch (error) {
     next(error);
   }
@@ -309,16 +325,16 @@ export const reloadFreshBanks = async () => {
 export const getUsedBanks = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const bankRepo = dbConnect.getRepository(Bank);
     const usedBanks = await bankRepo.find({
       where: { tag: BankTag.USED },
-      relations: ["shift", "shift.user"]
+      relations: ["shift", "shift.user"],
     });
 
-    const data = usedBanks.map(bank => ({
+    const data = usedBanks.map((bank) => ({
       id: bank.id,
       bankName: bank.bankName,
       accountName: bank.accountName,
@@ -327,7 +343,7 @@ export const getUsedBanks = async (
       tag: bank.tag,
       // Include payer name for used banks
       usedBy: bank.shift?.user?.fullName || null,
-      shiftId: bank.shift?.id || null
+      shiftId: bank.shift?.id || null,
     }));
 
     res.status(200).json({
@@ -343,11 +359,13 @@ export const getUsedBanks = async (
 export const getRolloverBanks = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const bankRepo = dbConnect.getRepository(Bank);
-    const rolloverBanks = await bankRepo.find({ where: { tag: BankTag.ROLLOVER } });
+    const rolloverBanks = await bankRepo.find({
+      where: { tag: BankTag.ROLLOVER },
+    });
 
     res.status(200).json({
       success: true,
@@ -362,7 +380,7 @@ export const getRolloverBanks = async (
 export const getFreshBanks = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const bankRepo = dbConnect.getRepository(Bank);
@@ -378,9 +396,11 @@ export const getFreshBanks = async (
 };
 
 // GET /banks/shift/:shiftId
-export const getBanksForShift = async (req: Request,
+export const getBanksForShift = async (
+  req: Request,
   res: Response,
-  next: NextFunction) => {
+  next: NextFunction,
+) => {
   try {
     const bankRepo = dbConnect.getRepository(Bank);
     const { shiftId } = req.params;

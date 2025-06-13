@@ -99,7 +99,7 @@ export const assignTradesToPayers = async (): Promise<void> => {
         Trade,
         "trade",
         "trade.assignedPayerId = user.id AND trade.status = :assignedStatus",
-        { assignedStatus: TradeStatus.ASSIGNED }
+        { assignedStatus: TradeStatus.ASSIGNED },
       )
       .where("user.userType = :payerType", { payerType: UserType.PAYER })
       .andWhere("user.status = :activeStatus", { activeStatus: "active" })
@@ -115,7 +115,7 @@ export const assignTradesToPayers = async (): Promise<void> => {
     }
 
     console.log(
-      `Found ${pendingTrades.length} trades and ${availablePayers.length} payers`
+      `Found ${pendingTrades.length} trades and ${availablePayers.length} payers`,
     );
 
     const assignedPayerIds = new Set<string>();
@@ -194,13 +194,15 @@ export const assignTradesToPayers = async (): Promise<void> => {
           trade.platform === TradePlatform.NOONES
             ? Platform.NOONES
             : Platform.PAXFUL;
-        const template = await dbConnect.getRepository(AutoMessageTemplate).findOne({
-          where: { type: TemplateType.WELCOME, platform, isActive: true },
-          order: { displayOrder: "ASC" },
-        });
+        const template = await dbConnect
+          .getRepository(AutoMessageTemplate)
+          .findOne({
+            where: { type: TemplateType.WELCOME, platform, isActive: true },
+            order: { displayOrder: "ASC" },
+          });
 
         console.log(
-          `Assigned trade ${trade.id} to ${selectedPayer.user_fullname}`
+          `Assigned trade ${trade.id} to ${selectedPayer.user_fullname}`,
         );
       } catch (error) {
         console.error(`Error assigning trade ${trade.id}:`, error);

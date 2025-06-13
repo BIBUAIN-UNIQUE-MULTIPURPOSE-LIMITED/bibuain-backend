@@ -46,7 +46,7 @@ const validateTemplateData = (data: Partial<AutoMessageTemplate>) => {
       data.availableVariables.forEach((variable: any, index: any) => {
         if (!variable.name || !variable.description) {
           errors.push(
-            `Variable at index ${index} must have name and description`
+            `Variable at index ${index} must have name and description`,
           );
         }
       });
@@ -60,7 +60,7 @@ const validateTemplateData = (data: Partial<AutoMessageTemplate>) => {
 export const createMessageTemplate = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     if (!req.user?.id) {
@@ -70,7 +70,7 @@ export const createMessageTemplate = async (
     if (req.user?.userType !== "admin") {
       throw new ErrorHandler(
         "Access denied: Only admins can create templates",
-        403
+        403,
       );
     }
 
@@ -104,7 +104,7 @@ export const createMessageTemplate = async (
     if (existingTemplate) {
       throw new ErrorHandler(
         "Active template already exists for this type and platform",
-        409
+        409,
       );
     }
 
@@ -125,7 +125,7 @@ export const createMessageTemplate = async (
 export const updateMessageTemplate = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     if (!req.user?.id) {
@@ -135,7 +135,7 @@ export const updateMessageTemplate = async (
     if (req.user?.userType !== "admin") {
       throw new ErrorHandler(
         "Access denied: Only admins can update templates",
-        403
+        403,
       );
     }
 
@@ -176,7 +176,7 @@ export const updateMessageTemplate = async (
       if (existingTemplate) {
         throw new ErrorHandler(
           "Active template already exists for this type and platform",
-          409
+          409,
         );
       }
     }
@@ -201,7 +201,7 @@ export const updateMessageTemplate = async (
 export const deleteMessageTemplate = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     if (!req.user?.id) {
@@ -211,7 +211,7 @@ export const deleteMessageTemplate = async (
     if (req.user?.userType !== "admin") {
       throw new ErrorHandler(
         "Access denied: Only admins can delete templates",
-        403
+        403,
       );
     }
 
@@ -238,7 +238,7 @@ export const deleteMessageTemplate = async (
 export const getSingleMessageTemplate = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { id } = req.params;
@@ -263,7 +263,7 @@ export const getSingleMessageTemplate = async (
 export const getAllMessageTemplates = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { type, platform, isActive, tags } = req.query;

@@ -7,7 +7,6 @@ import { PaxfulService } from "../config/paxful";
 import { Account, ForexPlatform } from "../models/accounts";
 import { Chat } from "../models/chats";
 
-
 interface ServiceResponse<T> {
   data: {
     trades?: T[];
@@ -56,11 +55,10 @@ const calculateRates = (trade: RawTrade) => {
   return { btcRate, btcAmount };
 };
 
-
 const createActivityLog = (
   action: ActivityType,
   description: string,
-  details: Record<string, any>
+  details: Record<string, any>,
 ): TradeActivityLogEntry => ({
   action,
   performedBy: "system",
@@ -71,7 +69,7 @@ const createActivityLog = (
 const normalizeTrade = (
   trade: RawTrade,
   platform: TradePlatform,
-  account: Account
+  account: Account,
 ): DeepPartial<any> => {
   const rates = calculateRates(trade);
 
@@ -113,7 +111,7 @@ const normalizeTrade = (
           tradeHash: trade.trade_hash,
           accountId: account.id,
           accountUsername: account.account_username,
-        }
+        },
       ),
     ],
   };
@@ -121,7 +119,7 @@ const normalizeTrade = (
 
 async function initializeService(
   account: Account,
-  ServiceClass: any
+  ServiceClass: any,
 ): Promise<any> {
   try {
     let service;
@@ -143,13 +141,13 @@ async function initializeService(
     }
 
     console.log(
-      `Initialized ${account.platform} service for account ${account.account_username}`
+      `Initialized ${account.platform} service for account ${account.account_username}`,
     );
     return service;
   } catch (error) {
     console.error(
       `Failed to initialize ${account.platform} service for account ${account.account_username}:`,
-      error
+      error,
     );
     return null;
   }
@@ -157,7 +155,7 @@ async function initializeService(
 
 async function fetchTradesForService(
   service: NoonesService | PaxfulService,
-  account: Account
+  account: Account,
 ): Promise<{ trade: RawTrade; account: Account }[]> {
   try {
     const trades = await service.listActiveTrades();
@@ -170,7 +168,7 @@ async function fetchTradesForService(
   } catch (error) {
     console.error(
       `Error fetching trades for ${account.platform} account ${account.account_username}:`,
-      error
+      error,
     );
     return [];
   }
@@ -178,7 +176,7 @@ async function fetchTradesForService(
 
 async function processTradeBatch(
   batch: DeepPartial<Trade>[],
-  queryRunner: any
+  queryRunner: any,
 ): Promise<{ inserted: number; updated: number; errors: number }> {
   const results = { inserted: 0, updated: 0, errors: 0 };
 
@@ -222,7 +220,7 @@ async function processTradeBatch(
         });
         const savedTrade = await innerQueryRunner.manager.save(
           Trade,
-          tradeEntity
+          tradeEntity,
         );
         tradeId = savedTrade.id;
         results.inserted++;
@@ -234,7 +232,7 @@ async function processTradeBatch(
           Trade,
           {
             where: { trade: { id: tradeId } },
-          }
+          },
         );
 
         // if (!escalatedTradeExists) {
@@ -311,19 +309,23 @@ export const fetchAndStoreTrades = async () => {
 
     // Initialize services
     const noonesServices = await Promise.all(
-      noonesAccounts.map((account) => initializeService(account, NoonesService))
+      noonesAccounts.map((account) =>
+        initializeService(account, NoonesService),
+      ),
     );
     const paxfulServices = await Promise.all(
-      paxfulAccounts.map((account) => initializeService(account, PaxfulService))
+      paxfulAccounts.map((account) =>
+        initializeService(account, PaxfulService),
+      ),
     );
 
     // Fetch trades
     const tradesPromises = [
       ...noonesServices.map((service: any, index: number) =>
-        service ? fetchTradesForService(service, noonesAccounts[index]) : []
+        service ? fetchTradesForService(service, noonesAccounts[index]) : [],
       ),
       ...paxfulServices.map((service, index) =>
-        service ? fetchTradesForService(service, paxfulAccounts[index]) : []
+        service ? fetchTradesForService(service, paxfulAccounts[index]) : [],
       ),
     ];
 

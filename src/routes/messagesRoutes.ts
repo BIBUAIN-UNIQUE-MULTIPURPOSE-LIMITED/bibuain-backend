@@ -17,7 +17,7 @@ router.post(
   validateRequest,
   authenticate,
   uploadSingleFile,
-  createMessage
+  createMessage,
 );
 
 // Get all messages for a chat
@@ -26,7 +26,7 @@ router.get(
   [param("chatId").isUUID().withMessage("Invalid chat ID.")],
   validateRequest,
   authenticate,
-  getMessages
+  getMessages,
 );
 
 // Delete a specific message by ID
@@ -38,7 +38,7 @@ router.delete(
   ],
   validateRequest,
   authenticate,
-  deleteMessage
+  deleteMessage,
 );
 
 // Mark a message as seen
@@ -50,7 +50,7 @@ router.put(
   ],
   validateRequest,
   authenticate,
-  markMessageAsSeen
+  markMessageAsSeen,
 );
 
 export default router;

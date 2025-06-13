@@ -34,7 +34,7 @@ export const createAdminUser: RequestHandler = async (req, res, next) => {
       fullName,
       phone,
       userType: UserType.ADMIN,
-      isEmailVerified: true
+      isEmailVerified: true,
     });
 
     await userRepo.save(adminUser);
@@ -54,10 +54,10 @@ export const createAdminUser: RequestHandler = async (req, res, next) => {
   }
 };
 
-export const   createUser = async (
+export const createUser = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { email, userType, fullName, phone, password } = req.body;
@@ -146,7 +146,7 @@ export const   createUser = async (
 };
 
 export const validatePassword = (
-  password: string
+  password: string,
 ): { isValid: boolean; message: string } => {
   if (password.length < 8) {
     return {
@@ -196,7 +196,7 @@ export const validatePassword = (
 export const editUser = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { id } = req.params;
@@ -239,7 +239,7 @@ export const editUser = async (
       if (existingUserByPhone && existingUserByPhone.id !== userToEdit.id) {
         throw new ErrorHandler(
           "Phone number already in use by another user",
-          409
+          409,
         );
       }
       userToEdit.phone = phone;
@@ -275,7 +275,7 @@ export const editUser = async (
 export const deleteUser = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const userIdToDelete = req.params.id;
@@ -288,7 +288,7 @@ export const deleteUser = async (
     if (req.user?.userType !== "admin") {
       throw new ErrorHandler(
         "Access denied: Only admins can delete users",
-        403
+        403,
       );
     }
 
@@ -322,7 +322,7 @@ export const deleteUser = async (
 export const getAllUsers = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { userType, email, fullName, status, clockedIn } = req.query;
@@ -346,7 +346,7 @@ export const getAllUsers = async (
     }
     if (clockedIn) {
       // Convert string 'true'/'false' to boolean
-      const isClockedIn = clockedIn === 'true';
+      const isClockedIn = clockedIn === "true";
       query.andWhere("user.clockedIn = :clockedIn", { clockedIn: isClockedIn });
     }
 
@@ -367,7 +367,7 @@ export const getAllUsers = async (
 export const getSingleUser = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { id } = req.params;

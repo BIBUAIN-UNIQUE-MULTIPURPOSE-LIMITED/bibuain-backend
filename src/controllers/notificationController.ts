@@ -15,7 +15,7 @@ import { io } from "../server";
 export const getUserNotifications: RequestHandler = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const userId = req.user?.id;
@@ -43,7 +43,7 @@ export const getUserNotifications: RequestHandler = async (
 export const markAllNotificationsAsRead: RequestHandler = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const userId = req.user?.id;
@@ -84,7 +84,7 @@ export const markAllNotificationsAsRead: RequestHandler = async (
 export const markNotificationAsRead: RequestHandler = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const userId = req.user?.id;
@@ -129,7 +129,7 @@ export const markNotificationAsRead: RequestHandler = async (
 export const deleteNotification: RequestHandler = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const userId = req.user?.id;
@@ -207,7 +207,7 @@ export const setupNotificationSocket = (io: any) => {
         } catch (error) {
           console.error("Error updating notification read status:", error);
         }
-      }
+      },
     );
   });
 };
@@ -216,7 +216,7 @@ export const setupNotificationSocket = (io: any) => {
 export const markAllNotificationsAsCompleted: RequestHandler = async (
   req: UserRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const userId = req.user?.id;
@@ -314,30 +314,21 @@ export const createNotification = async ({
 export const createNotificationHandler: RequestHandler = async (
   req,
   res,
-  next
+  next,
 ) => {
   try {
-    const {
-      userId,
-      title,
-      description,
-      type,
-      priority,
-      relatedAccountId,
-    } = req.body as {
-      userId: string;
-      title: string;
-      description: string;
-      type?: NotificationType;
-      priority?: PriorityLevel;
-      relatedAccountId?: string | null;
-    };
+    const { userId, title, description, type, priority, relatedAccountId } =
+      req.body as {
+        userId: string;
+        title: string;
+        description: string;
+        type?: NotificationType;
+        priority?: PriorityLevel;
+        relatedAccountId?: string | null;
+      };
 
     if (!userId || !title || !description) {
-      throw new ErrorHandler(
-        "userId, title and description are required",
-        400
-      );
+      throw new ErrorHandler("userId, title and description are required", 400);
     }
 
     const notification = await createNotification({

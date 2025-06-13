@@ -1,16 +1,16 @@
-import { Request, Response, NextFunction, RequestHandler } from "express";
+import { RequestHandler } from "express";
 import dbConnect from "../config/database";
 import { ActivityLog, ActivityType } from "../models/activityLogs";
 import { User } from "../models/user";
 import ErrorHandler from "../utils/errorHandler";
-import { Between, Like } from "typeorm";
+import { Between } from "typeorm";
 import { UserRequest } from "middlewares/authenticate";
 
 // Create a new activity log
 export const createActivityLog: RequestHandler = async (
   req: UserRequest,
   res,
-  next
+  next,
 ) => {
   try {
     const { activity, description, details, isSystemGenerated } = req.body;
@@ -62,7 +62,7 @@ export const createActivityLog: RequestHandler = async (
 export const deleteActivityLogs: RequestHandler = async (
   req: UserRequest,
   res,
-  next
+  next,
 ) => {
   try {
     const { ids } = req.body;
@@ -100,7 +100,7 @@ export const deleteActivityLogs: RequestHandler = async (
 export const getActivityLogs: RequestHandler = async (
   req: UserRequest,
   res,
-  next
+  next,
 ) => {
   try {
     const {
@@ -124,7 +124,7 @@ export const getActivityLogs: RequestHandler = async (
     if (startDate && endDate) {
       whereConditions.timestamp = Between(
         new Date(startDate as string),
-        new Date(endDate as string)
+        new Date(endDate as string),
       );
     }
 
@@ -185,7 +185,7 @@ export const getActivityLogs: RequestHandler = async (
 export const getActivityLogById: RequestHandler = async (
   req: UserRequest,
   res,
-  next
+  next,
 ) => {
   try {
     const { id } = req.params;
