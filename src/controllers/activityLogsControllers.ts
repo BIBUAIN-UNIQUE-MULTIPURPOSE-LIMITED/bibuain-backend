@@ -148,7 +148,6 @@ export const getActivityLogs: RequestHandler = async (
       whereConditions.isSystemGenerated = isSystemGenerated === "true";
     }
 
-    // Calculate skip for pagination
     const skip = (Number(page) - 1) * Number(limit);
 
     // Get logs with pagination and filters

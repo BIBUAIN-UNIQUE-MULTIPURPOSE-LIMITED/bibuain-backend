@@ -9,7 +9,10 @@ import {
 } from "../models/messageTemplates";
 import ErrorHandler from "../utils/errorHandler";
 
-// Validation helper
+/*
+ * Message Templates Controller
+ * Handles CRUD operations for auto message templates
+ */
 const validateTemplateData = (data: Partial<AutoMessageTemplate>) => {
   const errors: string[] = [];
 
@@ -57,7 +60,10 @@ const validateTemplateData = (data: Partial<AutoMessageTemplate>) => {
   return errors;
 };
 
-// Create Message Template
+/*
+ * Create Message Template
+ * Only accessible by admin users
+ */
 export const createMessageTemplate = async (
   req: UserRequest,
   res: Response,
@@ -80,12 +86,10 @@ export const createMessageTemplate = async (
       createdBy: req.user.id,
     };
 
-    // Validate required fields
     if (!templateData.type || !templateData.platform || !templateData.content) {
       throw new ErrorHandler("Type, platform, and content are required", 400);
     }
 
-    // Validate template data
     const validationErrors = validateTemplateData(templateData);
     if (validationErrors.length > 0) {
       throw new ErrorHandler(validationErrors.join(", "), 400);
@@ -93,7 +97,6 @@ export const createMessageTemplate = async (
 
     const templateRepo = dbConnect.getRepository(AutoMessageTemplate);
 
-    // Check for duplicate template
     const existingTemplate = await templateRepo.findOne({
       where: {
         type: templateData.type,
@@ -122,7 +125,10 @@ export const createMessageTemplate = async (
   }
 };
 
-// Update Message Template
+/*
+ * Update Message Template
+ * Only accessible by admin users
+ */
 export const updateMessageTemplate = async (
   req: UserRequest,
   res: Response,
@@ -146,7 +152,6 @@ export const updateMessageTemplate = async (
       updatedBy: req.user.id,
     };
 
-    // Validate template data
     const validationErrors = validateTemplateData(updateData);
     if (validationErrors.length > 0) {
       throw new ErrorHandler(validationErrors.join(", "), 400);
@@ -154,13 +159,11 @@ export const updateMessageTemplate = async (
 
     const templateRepo = dbConnect.getRepository(AutoMessageTemplate);
 
-    // Find existing template
     const template = await templateRepo.findOne({ where: { id } });
     if (!template) {
       throw new ErrorHandler("Template not found", 404);
     }
 
-    // Check for duplicate if type or platform is being changed
     if (
       (updateData.type || updateData.platform) &&
       updateData.isActive !== false
@@ -198,7 +201,10 @@ export const updateMessageTemplate = async (
   }
 };
 
-// Delete Message Template
+/*
+ * Delete Message Template
+ * Only accessible by admin users
+ */
 export const deleteMessageTemplate = async (
   req: UserRequest,
   res: Response,
@@ -235,7 +241,10 @@ export const deleteMessageTemplate = async (
   }
 };
 
-// Get Single Message Template
+/*
+ * Get Single Message Template
+ * Retrieves a specific message template by ID
+ */
 export const getSingleMessageTemplate = async (
   req: Request,
   res: Response,
@@ -260,7 +269,10 @@ export const getSingleMessageTemplate = async (
   }
 };
 
-// Get All Message Templates with filter
+/*
+ * Get All Message Templates
+ * Retrieves all message templates with optional filters
+ */
 export const getAllMessageTemplates = async (
   req: Request,
   res: Response,
@@ -291,7 +303,6 @@ export const getAllMessageTemplates = async (
       query.andWhere("template.tags && :tags", { tags: tagArray });
     }
 
-    // Order by display order and creation date
     query
       .orderBy("template.displayOrder", "ASC")
       .addOrderBy("template.createdAt", "DESC");

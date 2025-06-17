@@ -4,7 +4,10 @@ import { UserType } from "../models/user";
 
 const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 
-// Modify the JwtPayload interface to match the User model's properties
+/*
+ * Authentication Middleware
+ * Validates JWT token and attaches user information to the request object
+ */
 declare module "jsonwebtoken" {
   export interface JwtPayload {
     id: string;
@@ -17,7 +20,11 @@ export interface UserRequest extends Request {
   user?: JwtPayload;
 }
 
-// Middleware for authentication
+/*
+ * Middleware to authenticate user using JWT token
+ * Checks for token in cookies and verifies it
+ * If valid, attaches user information to the request object
+ */
 export const authenticate = (
   req: UserRequest,
   res: Response,
@@ -38,7 +45,11 @@ export const authenticate = (
   }
 };
 
-// Middleware for checking if the user is an admin
+/*
+ * Middleware to check if the user is an admin
+ * If user is authenticated and has admin privileges, allows access
+ * Otherwise, returns a 403 Forbidden response
+ */
 export const isAdmin = (
   req: UserRequest,
   res: Response,
@@ -57,7 +68,12 @@ export const isAdmin = (
   next();
 };
 
-// Middleware for role-based authorization
+/*
+ * Role-based Authorization Middleware
+ * Checks if the user has the required role(s) to access a resource
+ * If user is authenticated and has the required role, allows access
+ * Otherwise, returns a 403 Forbidden response
+ */
 export const roleAuth = (requiredUserType: UserType | UserType[]) => {
   return (req: UserRequest, res: Response, next: NextFunction): void => {
     try {

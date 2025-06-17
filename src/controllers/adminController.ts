@@ -79,20 +79,17 @@ export const createUser = async (
       throw new ErrorHandler(passwordValidation.message, 400);
     }
 
-    // Validate userType
     if (!Object.values(UserType).includes(userType)) {
       throw new ErrorHandler("Invalid userType provided", 400);
     }
 
     const userRepo = dbConnect.getRepository(User);
 
-    // Check if email already exists
     const existingUserByEmail = await userRepo.findOne({ where: { email } });
     if (existingUserByEmail) {
       throw new ErrorHandler("Email already exists", 409);
     }
 
-    // Check if phone number already exists
     if (phone) {
       const existingUserByPhone = await userRepo.findOne({ where: { phone } });
       if (existingUserByPhone) {
@@ -100,7 +97,6 @@ export const createUser = async (
       }
     }
 
-    // Hash password
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
@@ -243,7 +239,6 @@ export const editUser = async (
     userToEdit.phone = typeof phone === "string" ? phone : userToEdit.phone;
     userToEdit.userType = userType || userToEdit.userType;
 
-    // Save updated user
     const updatedUser = await userRepo.save(userToEdit);
 
     res.status(200).json({
@@ -301,7 +296,6 @@ export const deleteUser = async (
       throw new ErrorHandler("Admins cannot delete their own account", 400);
     }
 
-    // Delete the user
     await userRepo.remove(userToDelete);
 
     res.status(200).json({

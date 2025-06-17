@@ -16,14 +16,14 @@ import { Shift } from "../models/shift";
 import { Trade } from "../models/trades";
 import { User } from "../models/user";
 
-dotenv.config();
+const isProd = process.env.NODE_ENV === "production";
+
+dotenv.config({ path: isProd ? ".env.production" : ".env" });
 
 const db_name = process.env.DB_NAME;
 const username = process.env.DB_USER;
 const password = process.env.DB_PASSWORD;
 const host = process.env.DB_HOST;
-
-const isProd = process.env.NODE_ENV === "production";
 
 const dbConnect = new DataSource({
   type: "postgres",

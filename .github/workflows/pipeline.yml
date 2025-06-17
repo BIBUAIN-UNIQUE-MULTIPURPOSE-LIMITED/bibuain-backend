@@ -39,6 +39,9 @@ jobs:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: npm run migration:run
 
+      - name: Show pending migrations
+        run: npm run migration:show
+
       # - name: Lint
       #   run: npm run lint
 
@@ -53,7 +56,7 @@ jobs:
 
   deploy:
     needs: build
-    if: github.event_name == 'push' # only on direct pushes to main
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
 
     steps:

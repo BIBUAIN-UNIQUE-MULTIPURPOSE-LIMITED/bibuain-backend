@@ -4,7 +4,10 @@ import { Bank, BankTag } from "../models/bank";
 import { Shift } from "../models/shift";
 import ErrorHandler from "../utils/errorHandler";
 
-// Add a new bank (Raters only)
+/**
+ * Bank Controller
+ * Handles CRUD operations for banks
+ */
 export const addBank = async (
   req: Request,
   res: Response,
@@ -20,7 +23,6 @@ export const addBank = async (
       tag,
     } = req.body;
 
-    // Validation
     if (!bankName || !accountName || !accountNumber) {
       throw new ErrorHandler(
         "All fields (Bank Name, Account Name, Account Number) are required.",
@@ -55,7 +57,10 @@ export const addBank = async (
   }
 };
 
-// Fetch all banks (Admin/Raters View)
+/*
+ * Fetch all banks (Raters: view all banks)
+ * Returns all banks regardless of their tag
+ */
 export const getAllBanks = async (
   req: Request,
   res: Response,
@@ -74,7 +79,10 @@ export const getAllBanks = async (
   }
 };
 
-// Fetch free banks (Banks tagged UNFUNDED)
+/*
+ * Fetch all banks (Raters: view all banks)
+ * Returns all banks regardless of their tag
+ */
 export const getFreeBanks = async (
   req: Request,
   res: Response,
@@ -93,7 +101,11 @@ export const getFreeBanks = async (
   }
 };
 
-// Fetch funded banks (Banks tagged FUNDED)
+/*
+ * Fetch funded banks (Raters: view funded banks)
+ * Returns banks tagged as FUNDED, along with their current shift and user
+ * Used by Raters to see which banks are currently funded
+ */
 export const getFundedBanks = async (
   req: Request,
   res: Response,
@@ -122,7 +134,10 @@ export const getFundedBanks = async (
   }
 };
 
-// Get single bank by ID
+/*
+ * Fetch a single bank by ID (Raters: view bank details)
+ * Returns the bank details for a specific bank
+ */
 export const getBankById = async (
   req: Request,
   res: Response,
@@ -146,7 +161,11 @@ export const getBankById = async (
   }
 };
 
-// Update bank details (Raters: fund or modify)
+/*
+ * Update a bank (Raters: update bank details)
+ * Allows updating bank details, including funds and tag
+ * Tag transition: UNFUNDED -> FUNDED, or back to UNFUNDED
+ */
 export const updateBank = async (
   req: Request,
   res: Response,
@@ -170,7 +189,6 @@ export const updateBank = async (
       throw new ErrorHandler("Bank not found.", 404);
     }
 
-    // Update basic fields
     bank.bankName = bankName || bank.bankName;
     bank.accountName = accountName || bank.accountName;
     bank.accountNumber = accountNumber || bank.accountNumber;
@@ -203,7 +221,12 @@ export const updateBank = async (
   }
 };
 
-// Use a bank during a shift (Payers only)
+/*
+ * Use a bank (Raters: assign bank to shift)
+ * Deducts funds from the bank and associates it with a shift
+ * Updates the bank's tag based on remaining funds
+ * Adds a log entry for the assignment
+ */
 export const useBank = async (
   req: Request,
   res: Response,
@@ -213,7 +236,6 @@ export const useBank = async (
     const { id } = req.params;
     const { amountUsed, shiftId } = req.body;
 
-    // Validation
     if (typeof amountUsed !== "number" || !shiftId) {
       throw new ErrorHandler(
         "Request body must include numeric `amountUsed` and `shiftId`.",
@@ -240,7 +262,6 @@ export const useBank = async (
       const oldBank = await bankRepo.findOne({ where: { id: shift.bank.id } });
       if (oldBank) {
         oldBank.shift = undefined;
-        // Change status based on funds
         oldBank.tag = oldBank.funds > 0 ? BankTag.FUNDED : BankTag.ROLLOVER;
         await bankRepo.save(oldBank);
       }
@@ -264,7 +285,6 @@ export const useBank = async (
     };
     bank.logs = bank.logs ? [...bank.logs, logEntry] : [logEntry];
 
-    // Save changes
     await bankRepo.save(bank);
     await shiftRepo.save(shift);
 
@@ -285,7 +305,11 @@ export const useBank = async (
   }
 };
 
-// Delete a bank (Raters only)
+/*
+ * Delete a bank (Raters: remove bank)
+ * Deletes a bank if it has no associated shifts
+ * Returns an error if the bank is currently in use
+ */
 export const deleteBank = async (
   req: Request,
   res: Response,
@@ -306,7 +330,11 @@ export const deleteBank = async (
   }
 };
 
-// Daily refresh: mark UNFUNDED & ROLLOVER as FRESH
+/*
+ * Reload fresh banks (Raters: reset banks to UNFUNDED)
+ * Resets all banks tagged as ROLLOVER to UNFUNDED
+ * Used to refresh the state of banks at the start of a new day
+ */
 export const reloadFreshBanks = async () => {
   const bankRepo = dbConnect.getRepository(Bank);
   try {
@@ -321,7 +349,11 @@ export const reloadFreshBanks = async () => {
   }
 };
 
-// Fetch used banks (Banks tagged USED)
+/*
+ * Fetch used banks (Banks tagged USED)
+ * Returns banks that are currently assigned to shifts
+ * Includes the user who is using the bank
+ */
 export const getUsedBanks = async (
   req: Request,
   res: Response,
@@ -341,7 +373,6 @@ export const getUsedBanks = async (
       accountNumber: bank.accountNumber,
       funds: bank.funds,
       tag: bank.tag,
-      // Include payer name for used banks
       usedBy: bank.shift?.user?.fullName || null,
       shiftId: bank.shift?.id || null,
     }));
@@ -355,7 +386,11 @@ export const getUsedBanks = async (
   }
 };
 
-// Fetch rollover banks (Banks tagged ROLLOVER)
+/*
+ * Fetch rollover banks (Banks tagged ROLLOVER)
+ * Returns banks that have been used but are now available for reuse
+ * Used to track banks that can be reloaded with fresh funds
+ */
 export const getRolloverBanks = async (
   req: Request,
   res: Response,
@@ -376,7 +411,11 @@ export const getRolloverBanks = async (
   }
 };
 
-// Fetch fresh banks (Banks tagged FRESH)
+/*
+ * Fetch fresh banks (Banks tagged FRESH)
+ * Returns banks that are newly created and not yet used
+ * Used to display available banks for assignment
+ */
 export const getFreshBanks = async (
   req: Request,
   res: Response,
@@ -395,7 +434,11 @@ export const getFreshBanks = async (
   }
 };
 
-// GET /banks/shift/:shiftId
+/*
+ * Fetch banks for a specific shift
+ * Returns all banks associated with a given shift ID
+ * Used to display banks available for a specific shift
+ */
 export const getBanksForShift = async (
   req: Request,
   res: Response,

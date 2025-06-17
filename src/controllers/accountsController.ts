@@ -118,7 +118,6 @@ export const updateAccount: RequestHandler = async (
       account.account_username = account_username;
     }
 
-    // Update API secret directly
     if (api_secret) {
       account.api_secret = api_secret;
     }

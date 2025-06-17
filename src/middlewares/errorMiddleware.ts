@@ -6,6 +6,11 @@ type ErrorHandler = {
   stack?: string;
 };
 
+/**
+ * Error Handler Middleware
+ * This middleware handles errors thrown in the application
+ * It logs the error stack in development mode and sends a JSON response
+ */
 const errorHandlerMiddleware = (
   err: ErrorHandler,
   req: Request,

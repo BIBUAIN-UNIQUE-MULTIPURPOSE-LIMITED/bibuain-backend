@@ -52,7 +52,8 @@ if (process.env.NODE_ENV !== "test") {
       try {
         await pollAndAssignLiveTrades();
       } catch (e) {
-        console.error("[Cron] pollAndAssignLiveTrades error:", e);
+        // console.error("[Cron] pollAndAssignLiveTrades error:", e);
+        throw e;
       }
     },
     { scheduled: true, timezone: "Africa/Lagos" },
@@ -65,7 +66,8 @@ if (process.env.NODE_ENV !== "test") {
       try {
         await processTradeQueue();
       } catch (e) {
-        console.error("[Cron] processTradeQueue error:", e);
+        // console.error("[Cron] processTradeQueue error:", e);
+        throw e;
       }
     },
     { scheduled: true, timezone: "Africa/Lagos" },

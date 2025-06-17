@@ -300,7 +300,7 @@ export const createNotification = async ({
       }
     }
 
-    // Create the notification (Ensure fields match TypeORM expectations)
+    // Create the notification
     const notification = notificationRepo.create({
       user: { id: user.id },
       title,
