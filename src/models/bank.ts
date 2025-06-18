@@ -22,7 +22,7 @@ export class Bank {
   @PrimaryGeneratedColumn("uuid")
   id!: string;
 
-  @Column({ type: "varchar", length: 100 })
+  @Column({ type: "varchar", length: 100, nullable: true })
   bankName!: string;
 
   @Column({ type: "varchar", length: 100 })

@@ -37,10 +37,7 @@ jobs:
           DB_NAME: ${{ secrets.DB_NAME }}
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-        run: npm run migration:run
-
-      - name: Show pending migrations
-        run: npm run migration:show
+        run: npm run typeorm -- migration:run -d dist/config/database.js
 
       # - name: Lint
       #   run: npm run lint
