@@ -29,6 +29,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # - name: Lint
+      #   run: npm run lint
+
+      - name: Type-check
+        run: npm run type-check
+
+      - name: Build
+        run: npm run build
+
       - name: Run TypeORM migrations
         env:
           NODE_ENV: production
@@ -38,15 +47,6 @@ jobs:
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: npm run typeorm -- migration:run -d dist/config/database.js
-
-      # - name: Lint
-      #   run: npm run lint
-
-      - name: Type-check
-        run: npm run type-check
-
-      - name: Build
-        run: npm run build
 
       # - name: Test
       #   run: npm test
