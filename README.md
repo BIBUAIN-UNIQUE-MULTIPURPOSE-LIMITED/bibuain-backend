@@ -40,8 +40,4 @@ To revert migration (if applicable, _please be careful when reverting, only reve
 
 # To check lint error
 
-<<<<<<< HEAD
-`npm run lint`
-=======
-
 `npm run lint`
