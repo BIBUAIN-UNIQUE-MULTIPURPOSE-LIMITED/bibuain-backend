@@ -1,16 +1,16 @@
 import {
-  Entity,
-  PrimaryGeneratedColumn,
   Column,
-  ManyToOne,
   CreateDateColumn,
-  UpdateDateColumn,
+  Entity,
   JoinColumn,
+  ManyToOne,
   OneToMany,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from "typeorm";
+import { Notification } from "./notifications";
 import { Role } from "./roles";
 import { Shift } from "./shift";
-import { Notification } from "./notifications";
 
 export enum UserType {
   ADMIN = "admin",

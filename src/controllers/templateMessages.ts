@@ -1,12 +1,13 @@
-import { Request, Response, NextFunction } from "express";
-import { getRepository, Not } from "typeorm";
+import dbConnect from "../config/database";
+import type { NextFunction, Request, Response } from "express";
+import { Not } from "typeorm";
+import type { UserRequest } from "../middlewares/authenticate";
 import {
   AutoMessageTemplate,
-  TemplateType,
   Platform,
+  TemplateType,
 } from "../models/messageTemplates";
 import ErrorHandler from "../utils/errorHandler";
-import { UserRequest } from "../middlewares/authenticate";
 
 // Validation helper
 const validateTemplateData = (data: Partial<AutoMessageTemplate>) => {
@@ -90,7 +91,7 @@ export const createMessageTemplate = async (
       throw new ErrorHandler(validationErrors.join(", "), 400);
     }
 
-    const templateRepo = getRepository(AutoMessageTemplate);
+    const templateRepo = dbConnect.getRepository(AutoMessageTemplate);
 
     // Check for duplicate template
     const existingTemplate = await templateRepo.findOne({
@@ -151,7 +152,7 @@ export const updateMessageTemplate = async (
       throw new ErrorHandler(validationErrors.join(", "), 400);
     }
 
-    const templateRepo = getRepository(AutoMessageTemplate);
+    const templateRepo = dbConnect.getRepository(AutoMessageTemplate);
 
     // Find existing template
     const template = await templateRepo.findOne({ where: { id } });
@@ -216,7 +217,7 @@ export const deleteMessageTemplate = async (
     }
 
     const { id } = req.params;
-    const templateRepo = getRepository(AutoMessageTemplate);
+    const templateRepo = dbConnect.getRepository(AutoMessageTemplate);
 
     const template = await templateRepo.findOne({ where: { id } });
     if (!template) {
@@ -242,7 +243,7 @@ export const getSingleMessageTemplate = async (
 ) => {
   try {
     const { id } = req.params;
-    const templateRepo = getRepository(AutoMessageTemplate);
+    const templateRepo = dbConnect.getRepository(AutoMessageTemplate);
 
     const template = await templateRepo.findOne({ where: { id } });
     if (!template) {
@@ -267,7 +268,7 @@ export const getAllMessageTemplates = async (
 ) => {
   try {
     const { type, platform, isActive, tags } = req.query;
-    const templateRepo = getRepository(AutoMessageTemplate);
+    const templateRepo = dbConnect.getRepository(AutoMessageTemplate);
 
     const query = templateRepo.createQueryBuilder("template");
 

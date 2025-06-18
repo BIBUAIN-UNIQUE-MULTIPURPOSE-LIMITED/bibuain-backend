@@ -1,8 +1,5 @@
-import dotenv from "dotenv";
 import axios from "axios";
-import { AxiosError } from "axios";
-
-dotenv.config();
+import type { AxiosError } from "axios";
 
 export interface NoonesServiceConfig {
   apiKey: string;
@@ -20,6 +17,12 @@ export interface NoonesApiResponse<T> {
   data: T;
   status: string;
   timestamp: number;
+}
+
+export interface NoonesError {
+  message: string;
+  code?: number;
+  details?: string;
 }
 
 interface WalletBalance {
@@ -42,7 +45,7 @@ export class NoonesService {
   private apiSecret: string;
   private token: string | null = null;
   private tokenExpiry: number | null = null;
-  private isInitialized: boolean = false;
+  private isInitialized = false;
   public accountId?: string;
   public label?: string;
 
@@ -57,7 +60,7 @@ export class NoonesService {
     this.label = config.label;
   }
 
-  private handleApiError(error: any): never {
+  private handleApiError(error: AxiosError<NoonesError>): never {
     if (error.response) {
       const status = error.response.status;
       const message = error.response.data?.message || "An error occurred";
@@ -92,7 +95,6 @@ export class NoonesService {
     try {
       await this.getAccessToken();
       this.isInitialized = true;
-      // console.log(`[${this.label}] Service initialized successfully`);
     } catch (error) {
       this.isInitialized = false;
       console.error(`[${this.label}] Initialization failed:`, error);
@@ -114,7 +116,6 @@ export class NoonesService {
       params.append("client_secret", this.apiSecret);
       params.append("grant_type", "client_credentials");
 
-      // console.log(`[${this.label}] Making request to ${url}`);
       const response = await axios.post<TokenResponse>(url, params, {
         headers,
       });
@@ -127,11 +128,12 @@ export class NoonesService {
       this.tokenExpiry = Date.now() + response.data.expires_in * 1000;
 
       return this.token;
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.token = null;
       this.tokenExpiry = null;
-      // console.log(`This is nooones Response`, error);
-      throw new Error(`Failed to fetch access token: ${error.message}`);
+      throw new Error(
+        `Failed to fetch access token: ${(error as Error)?.message}`,
+      );
     }
   }
 
@@ -147,7 +149,6 @@ export class NoonesService {
       const token = await this.getAccessToken();
       const url = `https://api.noones.com${endpoint}`;
 
-      // console.log(`[${this.label}] Making request to ${url}`);
       const response = await axios.post<NoonesApiResponse<T>>(url, params, {
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -155,15 +156,16 @@ export class NoonesService {
         },
       });
 
-      // Add this debug log to see what the response contains
-      // console.log(`[${this.label}] Response data:`, JSON.stringify(response.data));
-
-      // Return the complete response data instead of just data.data
       return response.data;
     } catch (error) {
-      return this.handleApiError(error as AxiosError);
+      return this.handleApiError(error as AxiosError<NoonesError>);
     }
   }
+
+  /*
+   * Method to get the current Bitcoin price from Noones
+   * @returns The current Bitcoin price in USD
+   */
   async getBitcoinPrice(): Promise<number> {
     try {
       const accessToken = await this.getAccessToken();
@@ -188,49 +190,67 @@ export class NoonesService {
     }
   }
 
+  /*
+   * Method to get trade details by trade hash
+   * @param tradeHash - The hash of the trade to fetch details for
+   * @returns An object containing trade details
+   */
   async getTradeDetails(tradeHash: string): Promise<any> {
     try {
       const params = new URLSearchParams({ trade_hash: tradeHash });
-      const response = await this.makeAuthenticatedRequest<any>(
+      const response = await this.makeAuthenticatedRequest(
         "/noones/v1/trade/get",
         params,
       );
       return response.data.trade;
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to fetch trade details for account ${this.label}: ${error.message}`,
+        `Failed to fetch trade details for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
 
+  /*
+   * Method to list active trades for the Noones account
+   * @returns An array of active trades
+   */
   async listActiveTrades(): Promise<any[]> {
     try {
-      const response = await this.makeAuthenticatedRequest<any>(
+      const response = await this.makeAuthenticatedRequest(
         "/noones/v1/trade/list",
       );
       console.log(response);
       return response.data?.trades;
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to list active trades for account ${this.label}: ${error.message}`,
+        `Failed to list active trades for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
 
+  /*
+   * Method to verify Noones API credentials
+   * @returns A boolean indicating whether the credentials are valid
+   */
   async verifyCredentials(): Promise<boolean> {
     try {
       await this.initialize();
       return true;
     } catch (error) {
+      console.error(`Noones API verification failed for ${this.label}:`, error);
       return false;
     }
   }
+
+  /*
+   * Method to get wallet balances for the Noones account
+   * @returns An array of WalletBalance objects containing currency, name, balance, and type
+   */
   async getWalletBalances(): Promise<WalletBalance[]> {
     try {
-      const response = await this.makeAuthenticatedRequest<any>(
+      const response = await this.makeAuthenticatedRequest(
         "/noones/v1/user/wallet-balances",
       );
-      // console.log("Raw Noones API response:", JSON.stringify(response, null, 2));
 
       const balances: WalletBalance[] = [];
 
@@ -239,14 +259,20 @@ export class NoonesService {
 
       // Add crypto currencies with null checks
       if (data?.cryptoCurrencies?.length) {
-        data.cryptoCurrencies.forEach((crypto: any) => {
-          balances.push({
-            currency: crypto.code,
-            name: crypto.name,
-            balance: parseFloat(crypto.balance) || 0,
-            type: "crypto",
-          });
-        });
+        data.cryptoCurrencies.forEach(
+          (crypto: {
+            code: string;
+            name: string;
+            balance: string | number;
+          }) => {
+            balances.push({
+              currency: crypto.code,
+              name: crypto.name,
+              balance: Number.parseFloat(crypto.balance.toString()) || 0,
+              type: "crypto",
+            });
+          },
+        );
       }
 
       // Add fiat currency with null checks
@@ -254,21 +280,24 @@ export class NoonesService {
         balances.push({
           currency: data.preferredFiatCurrency.code,
           name: data.preferredFiatCurrency.name,
-          balance: parseFloat(data.preferredFiatCurrency.balance) || 0,
+          balance: Number.parseFloat(data.preferredFiatCurrency.balance) || 0,
           type: "fiat",
         });
       }
-
-      // console.log("Processed Noones balances:", JSON.stringify(balances, null, 2));
       return balances;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(`Noones API error for ${this.label}:`, error);
       throw new Error(
-        `Failed to fetch wallet balances for account ${this.label}: ${error.message}`,
+        `Failed to fetch wallet balances for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
-  // Method to get trade chat history
+
+  /*
+   * Method to get the trade chat messages for a specific trade
+   * @param tradeHash - The hash of the trade to fetch chat messages for
+   * @returns An object containing messages and attachments
+   */
   async getTradeChat(tradeHash: string): Promise<any> {
     try {
       const params = new URLSearchParams({
@@ -278,23 +307,18 @@ export class NoonesService {
 
       const response = await this.makeAuthenticatedRequest<{
         messages: ChatMessage[];
-        attachments?: any[];
+        attachments?: unknown[];
       }>("/noones/v1/trade-chat/get", params);
 
-      // Log the response to debug
-      // console.log('[Noones] Trade chat response:', response);
-
-      // Return in the same format as Paxful
       return {
         messages: response.data.messages,
         attachments: response.data.attachments,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(
         `Failed to fetch trade chat for account ${this.label}:`,
         error,
       );
-      // Return empty arrays on error instead of throwing
       return {
         messages: [],
         attachments: [],
@@ -302,8 +326,13 @@ export class NoonesService {
     }
   }
 
-  // Method to send a chat message
-  async sendTradeMessage(tradeHash: string, message: string): Promise<string> {
+  /*
+   * Method to send a message in the trade chat
+   * @param tradeHash - The hash of the trade to send the message in
+   * @param message - The message content to send
+   * @returns A success message or an error message
+   */
+  async sendTradeMessage(tradeHash: string, message: string): Promise<any> {
     try {
       const params = new URLSearchParams({
         trade_hash: tradeHash,
@@ -317,30 +346,28 @@ export class NoonesService {
 
       if (response?.success) {
         return "Message Posted Successfully!";
-      } else {
-        return "Failed To send Message!";
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to send trade message for account ${this.label}: ${error.message}`,
+        `Failed to send trade message for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
 
+  /*
+   * Method to mark a trade as paid
+   * @param tradeHash - The hash of the trade to mark as paid
+   * @returns A boolean indicating whether the operation was successful
+   */
   async markTradeAsPaid(tradeHash: string): Promise<boolean> {
     try {
-      // First get the current trade status from Noones
       const tradeDetails = await this.getTradeDetails(tradeHash);
-
-      // Check if trade is already completed
       if (
         tradeDetails.trade_status === "completed" ||
         tradeDetails.trade_status === "paid"
       ) {
-        return true; // Already paid, consider this a success
+        return true;
       }
-
-      // Check if trade is in a terminal state
       if (
         ["cancelled", "expired", "disputed", "refunded"].includes(
           tradeDetails.trade_status,
@@ -351,14 +378,12 @@ export class NoonesService {
         );
       }
 
-      // If trade is active, attempt to mark as paid
       const params = new URLSearchParams({ trade_hash: tradeHash });
       const response = await this.makeAuthenticatedRequest<{
         success: boolean;
         error?: { code: string; message: string };
       }>("/noones/v1/trade/paid", params);
 
-      // Handle API response
       if (response.error) {
         throw new Error(response.error.message || "Noones API returned error");
       }
@@ -368,33 +393,20 @@ export class NoonesService {
       }
 
       return true;
-    } catch (error: any) {
-      // Handle HTTP errors
-      if (error.response) {
-        // Handle 404 - Trade not found
-        if (error.response.status === 404) {
-          throw new Error(
-            `Trade ${tradeHash} not found - may have expired or been canceled`,
-          );
-        }
-
-        // Handle rate limiting
-        if (error.response.status === 429) {
-          throw new Error("Too many requests - please try again later");
-        }
-
-        // Handle other HTTP errors
-        const errorData = error.response.data?.error || error.response.data;
-        throw new Error(
-          errorData?.message || `HTTP ${error.response.status} error`,
-        );
-      }
-
-      // Re-throw other errors
-      throw error;
+    } catch (error: unknown) {
+      console.error(
+        `Failed to mark trade as paid for account ${this.label}:`,
+        error,
+      );
+      throw new Error(`HTTP ${(error as Error)?.message} error`);
     }
   }
 
+  /*
+   * Method to get the transaction history for the Noones account
+   * @param options - Optional parameters to filter the transaction history
+   * @returns An array of transactions
+   */
   async getTransactionHistory(
     options: {
       currency?: string;
@@ -416,7 +428,7 @@ export class NoonesService {
       if (options.limit) params.append("limit", options.limit.toString());
 
       const response = await this.makeAuthenticatedRequest<{
-        transactions: any[];
+        transactions: unknown[];
       }>("/noones/v1/wallet/transactions", params);
 
       if (!response.transactions) {
@@ -428,12 +440,18 @@ export class NoonesService {
       }
 
       return response.transactions;
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to fetch transaction history for account ${this.label}: ${error.message}`,
+        `Failed to fetch transaction history for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
+
+  /*
+   * Method to list active offers for the Noones account
+   * @param offerType - Optional filter for offer type ("buy" or "sell")
+   * @returns An array of active offers
+   */
   async listActiveOffers(offerType?: "buy" | "sell"): Promise<any[]> {
     try {
       const params = new URLSearchParams();
@@ -442,12 +460,11 @@ export class NoonesService {
         params.append("offer_type", offerType);
       }
 
-      const response = await this.makeAuthenticatedRequest<any>(
+      const response = await this.makeAuthenticatedRequest(
         "/noones/v1/offer/list",
         params,
       );
 
-      // Handle different response structures
       if (response.data && Array.isArray(response.data.offers)) {
         return response.data.offers;
       } else if (Array.isArray(response.offers)) {
@@ -458,16 +475,20 @@ export class NoonesService {
 
       console.warn(`[${this.label}] No offers data in response:`, response);
       return [];
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to list active offers for account ${this.label}: ${error.message}`,
+        `Failed to list active offers for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
 
+  /*
+   * Method to get details of a specific offer by its hash
+   * @param offerHash - The hash of the offer to fetch details for
+   * @returns An object containing offer details
+   */
   async getDeactivatedOffers(): Promise<any[]> {
     try {
-      // For Noones service
       const params = new URLSearchParams();
       params.append("active", "false");
 
@@ -478,23 +499,27 @@ export class NoonesService {
         params,
       );
 
-      // console.log("Deactivated offers Noones : ", response?.data?.offers.active)
       if (response?.data?.offers) {
         return response.data.offers.filter(
-          (offer: any) => offer.active === false,
+          (offer: { active?: boolean }) => offer.active === false,
         );
       }
 
       console.warn("No offers or trades found in Noones response:", response);
       return [];
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error fetching Noones deactivated offers:", err);
       throw new Error(
-        `Failed to fetch Noones deactivated offers: ${err.message}`,
+        `Failed to fetch Noones deactivated offers: ${(err as Error).message}`,
       );
     }
   }
 
+  /*
+   * Method to activate a Noones offer by its hash
+   * @param offerHash - The hash of the offer to activate
+   * @returns An object containing the activation response
+   */
   async activateOffer(offerHash: string): Promise<any> {
     try {
       const params = new URLSearchParams();
@@ -505,13 +530,18 @@ export class NoonesService {
       );
       console.log(`Activated Noones offer ${offerHash}:`, response);
       return response;
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to activate Noones offer ${offerHash}: ${error.message}`,
+        `Failed to activate Noones offer ${offerHash}: ${(error as Error).message}`,
       );
     }
   }
 
+  /*
+   * Method to turn on all offers for the Noones account
+   * @returns The number of offers that were turned on
+   * @throws Error if the request fails
+   */
   async turnOnAllOffers(): Promise<number> {
     try {
       const response = await this.makeAuthenticatedRequest<{
@@ -519,16 +549,15 @@ export class NoonesService {
       }>("/noones/v1/offer/turn-on", new URLSearchParams());
 
       return response.count;
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to turn off all offers for account ${this.label}: ${error.message}`,
+        `Failed to turn off all offers for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
 
   async updateOffer(offerHash: string, margin: number): Promise<any> {
     try {
-      // console.log(`[${this.label}] Updating Noones offer ${offerHash} with margin ${margin}`);
       const params = new URLSearchParams();
       params.append("offer_hash", offerHash);
       params.append("margin", margin.toString());
@@ -537,15 +566,18 @@ export class NoonesService {
         status: string;
         data: { success: boolean };
       }>("/noones/v1/offer/update", params);
-
-      // console.log(`[${this.label}] Noones update response:`, response);
       return response;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(`[${this.label}] Noones offer update failed:`, error);
       throw error;
     }
   }
 
+  /*
+   * Method to turn off all offers for the Noones account
+   * @returns The number of offers that were turned off
+   * @throws Error if the request fails
+   */
   async turnOffAllOffers(): Promise<number> {
     try {
       const response = await this.makeAuthenticatedRequest<{
@@ -553,13 +585,18 @@ export class NoonesService {
       }>("/noones/v1/offer/turn-off", new URLSearchParams());
 
       return response.count;
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to turn off all offers for account ${this.label}: ${error.message}`,
+        `Failed to turn off all offers for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
 
+  /*
+   * Method to get feedback statistics for a user
+   * @param params - An object containing username, role, and rating
+   * @returns The total count of feedback matching the criteria
+   */
   async getFeedbackStats(params: {
     username?: string;
     role?: "buyer" | "seller";
@@ -570,19 +607,13 @@ export class NoonesService {
       if (params.username) requestParams.append("username", params.username);
       if (params.role) requestParams.append("role", params.role);
 
-      // Convert the 0 rating to -1 for negative feedback as per the API documentation
       const apiRating = params.rating === 0 ? -1 : params.rating;
       requestParams.append("rating", apiRating.toString());
       requestParams.append("page", "1");
-
-      // console.log(`[noonesService] Making request for ${params.username} with rating ${apiRating}`);
-
-      const response = await this.makeAuthenticatedRequest<any>(
+      const response = await this.makeAuthenticatedRequest(
         "/noones/v1/feedback/list",
         requestParams,
       );
-
-      // If the response is undefined, your makeAuthenticatedRequest may have issues
       if (response === undefined) {
         console.log("[noonesService] Response is undefined");
         return 0;
@@ -590,7 +621,6 @@ export class NoonesService {
 
       console.log("[noonesService] Full feedback response:", response);
 
-      // Check different possible response structures
       if (response.data && typeof response.data.total_count === "number") {
         return response.data.total_count;
       } else if (response.total_count !== undefined) {
@@ -603,20 +633,26 @@ export class NoonesService {
 
       console.log("[noonesService] Unexpected response format:", response);
       return 0;
-    } catch (error: any) {
-      console.error("Error in Noones getFeedbackStats:", error.message);
+    } catch (error: unknown) {
+      console.error(
+        "Error in Noones getFeedbackStats:",
+        (error as Error).message,
+      );
       return 0;
     }
   }
 
+  /*
+   * Method to get the Bitcoin price in NGN
+   * @returns The current Bitcoin price in NGN
+   */
   async getBitcoinPriceInNgn(): Promise<number> {
     try {
-      const response = await this.makeAuthenticatedRequest<any>(
+      const response = await this.makeAuthenticatedRequest(
         "/noones/v1/currency/list",
         new URLSearchParams(),
       );
 
-      // Determine which property contains the currencies array
       let currencies;
       if (response.data && Array.isArray(response.data.currencies)) {
         currencies = response.data.currencies;
@@ -630,38 +666,39 @@ export class NoonesService {
         throw new Error("Invalid response structure: currencies not found");
       }
 
-      // Find NGN data
-      const ngnData = currencies.find((cur: any) => {
-        const currencyCode =
-          (cur.currency && cur.currency.toLowerCase()) ||
-          (cur.code && cur.code.toLowerCase()) ||
-          (cur.symbol && cur.symbol.toLowerCase()) ||
-          "";
+      const ngnData = currencies.find(
+        (cur: {
+          currency?: string;
+          code?: string;
+          symbol?: string;
+          name?: string;
+        }) => {
+          const currencyCode =
+            (cur.currency && cur.currency.toLowerCase()) ||
+            (cur.code && cur.code.toLowerCase()) ||
+            (cur.symbol && cur.symbol.toLowerCase()) ||
+            "";
 
-        return (
-          currencyCode === "ngn" ||
-          currencyCode === "nigeria" ||
-          currencyCode === "naira" ||
-          (cur.name && cur.name.toLowerCase().includes("nigeria"))
-        );
-      });
+          return (
+            currencyCode === "ngn" ||
+            currencyCode === "nigeria" ||
+            currencyCode === "naira" ||
+            (cur.name && cur.name.toLowerCase().includes("nigeria"))
+          );
+        },
+      );
 
       if (!ngnData) {
-        // console.log("NGN not found in currencies list");
         throw new Error("NGN currency not found in the list");
       }
 
-      // console.log("Found NGN data:", JSON.stringify(ngnData));
-
-      // Extract the BTC rate directly from the rate object
       if (ngnData.rate && typeof ngnData.rate === "object") {
         const btcRate = ngnData.rate.btc;
         if (btcRate) {
-          return parseFloat(btcRate);
+          return Number.parseFloat(btcRate);
         }
       }
 
-      // Fallback to calculating it
       const [btcPriceUsd, ngnRate] = await Promise.all([
         this.getBitcoinPrice(),
         this.getNgnRate(),
@@ -673,8 +710,11 @@ export class NoonesService {
     }
   }
 
+  /*
+   * Method to get the USDT price in NGN
+   * @returns The current USDT price in NGN
+   */
   async getUsdtPriceInNgn(): Promise<number> {
-    // USDT is pegged to USD, so we just need the NGN rate
     try {
       return await this.getNgnRate();
     } catch (error) {
@@ -683,14 +723,16 @@ export class NoonesService {
     }
   }
 
+  /*
+   * Method to get the NGN rate from Noones
+   * @returns The current NGN rate in USDT or USD
+   */
   async getNgnRate(): Promise<number> {
     try {
-      const response = await this.makeAuthenticatedRequest<any>(
+      const response = await this.makeAuthenticatedRequest(
         "/noones/v1/currency/list",
         new URLSearchParams(),
       );
-
-      // Determine which property contains the currencies array
       let currencies;
       if (response.data && Array.isArray(response.data.currencies)) {
         currencies = response.data.currencies;
@@ -704,35 +746,36 @@ export class NoonesService {
         throw new Error("Invalid response structure: currencies not found");
       }
 
-      // Find NGN data
-      const ngnData = currencies.find((cur: any) => {
-        const currencyCode =
-          (cur.currency && cur.currency.toLowerCase()) ||
-          (cur.code && cur.code.toLowerCase()) ||
-          (cur.symbol && cur.symbol.toLowerCase()) ||
-          "";
+      const ngnData = currencies.find(
+        (cur: {
+          currency?: string;
+          code?: string;
+          symbol?: string;
+          name?: string;
+        }) => {
+          const currencyCode =
+            (cur.currency && cur.currency.toLowerCase()) ||
+            (cur.code && cur.code.toLowerCase()) ||
+            (cur.symbol && cur.symbol.toLowerCase()) ||
+            "";
 
-        return (
-          currencyCode === "ngn" ||
-          currencyCode === "nigeria" ||
-          currencyCode === "naira" ||
-          (cur.name && cur.name.toLowerCase().includes("nigeria"))
-        );
-      });
+          return (
+            currencyCode === "ngn" ||
+            currencyCode === "nigeria" ||
+            currencyCode === "naira" ||
+            (cur.name && cur.name.toLowerCase().includes("nigeria"))
+          );
+        },
+      );
 
       if (!ngnData) {
-        // console.log("NGN not found in currencies list");
         throw new Error("NGN currency not found in the list");
       }
 
-      // console.log("Found NGN data:", JSON.stringify(ngnData));
-
-      // Extract the USDT rate from the rate object
       if (ngnData.rate && typeof ngnData.rate === "object") {
-        // For USDT/NGN, we want the USDT rate
         const usdtRate = ngnData.rate.usdt;
         if (usdtRate) {
-          return parseFloat(usdtRate);
+          return Number.parseFloat(usdtRate);
         }
       }
 
@@ -740,7 +783,7 @@ export class NoonesService {
       if (ngnData.rate && typeof ngnData.rate === "object") {
         const usdRate = ngnData.rate.usd;
         if (usdRate) {
-          return parseFloat(usdRate);
+          return Number.parseFloat(usdRate);
         }
       }
 
@@ -752,12 +795,16 @@ export class NoonesService {
     }
   }
 
-  async listCompletedTrades(page: number = 1): Promise<any[]> {
+  /*
+   * Method to list completed trades for the Noones account
+   * @param page - The page number to fetch (default is 1)
+   * @returns An array of completed trades
+   */
+  async listCompletedTrades(page = 1): Promise<any[]> {
     try {
       const params = new URLSearchParams();
       params.append("page", page.toString());
-      // Assuming Noones exposes a similar endpoint as Paxful for completed trades.
-      const response = await this.makeAuthenticatedRequest<any>(
+      const response = await this.makeAuthenticatedRequest(
         "/noones/v1/trade/completed",
         params,
       );
@@ -769,70 +816,52 @@ export class NoonesService {
         return [];
       }
       return response.trades;
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to list completed trades for account ${this.label}: ${error.message}`,
+        `Failed to list completed trades for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
 
+  /*
+   * Method to cancel a trade by its hash
+   * @param tradeHash - The hash of the trade to cancel
+   * @returns A boolean indicating whether the cancellation was successful
+   * @throws Error if the cancellation fails or if the trade is not found
+   */
   async cancelTrade(tradeHash: string): Promise<boolean> {
     try {
-      // Create params with the trade hash
       const params = new URLSearchParams();
       params.append("trade_hash", tradeHash);
 
-      // Make the API request
       const response = await this.makeAuthenticatedRequest<{
         success: boolean;
         error?: { code: string; message: string };
       }>("/noones/v1/trade/cancel", params);
 
-      // Check for API errors in the response
       if (response.error) {
         throw new Error(response.error.message || "Noones API returned error");
       }
-
-      // Check for success indicator in response
       if (response.data && response.data.success === true) {
-        return true;
-      } else if (response.success === true) {
         return true;
       }
 
-      // If we couldn't confirm success, throw an error
       throw new Error(
         "Trade cancellation failed - API did not confirm success",
       );
-    } catch (error: any) {
-      // Handle HTTP errors
-      if (error.response) {
-        // Handle 404 - Trade not found
-        if (error.response.status === 404) {
-          throw new Error(
-            `Trade ${tradeHash} not found - may have expired or been canceled already`,
-          );
-        }
-
-        // Handle rate limiting
-        if (error.response.status === 429) {
-          throw new Error("Too many requests - please try again later");
-        }
-
-        // Handle other HTTP errors
-        const errorData = error.response.data?.error || error.response.data;
-        throw new Error(
-          errorData?.message || `HTTP ${error.response.status} error`,
-        );
-      }
-
-      // Re-throw with context
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to cancel trade for account ${this.label}: ${error.message}`,
+        `Failed to cancel trade for account ${this.label}: ${(error as Error).message}`,
       );
     }
   }
 
+  /*
+   * Method to create a new offer on Noones
+   * @param params - An object containing offer parameters
+   * @returns An object containing the offer hash if successful
+   * @throws Error if the offer creation fails
+   */
   async createOffer(params: any) {
     const {
       tags,
@@ -845,7 +874,6 @@ export class NoonesService {
       fixed_price,
       location_id,
       offer_terms,
-      bank_accounts,
       is_fixed_price,
       payment_method,
       payment_window,
@@ -945,23 +973,19 @@ export class NoonesService {
           auto_share_vendor_payment_account.toString(),
         );
 
-      // Make the request to create the offer
-      const response = await this.makeAuthenticatedRequest<any>(
+      const response = await this.makeAuthenticatedRequest(
         "/noones/v1/offer/create",
         requestParams,
       );
-      // console.log(response);
       if (response?.offer_hash) {
         return {
           success: true,
           offer_hash: response.offer_hash,
         };
-      } else {
-        throw new Error("Failed to create the offer");
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error creating offer:", error);
-      throw new Error(`Failed to create offer: ${error.message}`);
+      throw new Error(`Failed to create offer: ${(error as Error).message}`);
     }
   }
 }

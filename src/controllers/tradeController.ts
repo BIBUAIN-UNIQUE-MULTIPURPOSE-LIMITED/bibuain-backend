@@ -1,22 +1,23 @@
-import { Request, Response, NextFunction } from "express";
-import { UserRequest } from "../middlewares/authenticate";
-import dbConnect from "../config/database";
-import { Trade, TradeStatus } from "../models/trades";
-import { Rates } from "../models/rates";
-import { Account, ForexPlatform } from "../models/accounts";
-import { NoonesService } from "../config/noones";
-import paxfulService, { PaxfulService } from "../config/paxful";
-import { BinanceService } from "../config/binance";
-import ErrorHandler from "../utils/errorHandler";
-import { User, UserType } from "../models/user";
+import { randomUUID } from "crypto";
+import type { NextFunction, Request, Response } from "express";
+import type { Server } from "socket.io";
 import { In, Not } from "typeorm";
-import { createNotification } from "./notificationController";
-import { NotificationType, PriorityLevel } from "../models/notifications";
-import { Shift, ShiftStatus } from "../models/shift";
-import { Server } from "socket.io";
 import app from "../app";
+import { BinanceService } from "../config/binance";
+import dbConnect from "../config/database";
+import { NoonesService } from "../config/noones";
+import { PaxfulService } from "../config/paxful";
+import type { UserRequest } from "../middlewares/authenticate";
+import { Account, ForexPlatform } from "../models/accounts";
 import { Bank, BankTag } from "../models/bank";
+import { NotificationType, PriorityLevel } from "../models/notifications";
+import { Rates } from "../models/rates";
+import { Shift, ShiftStatus } from "../models/shift";
+import { Trade, TradeStatus } from "../models/trades";
+import { User, UserType } from "../models/user";
 import { io } from "../server";
+import ErrorHandler from "../utils/errorHandler";
+import { createNotification } from "./notificationController";
 
 export interface PlatformServices {
   noones: NoonesService[];
@@ -367,15 +368,12 @@ export const processTradeQueue = async (): Promise<void> => {
   const lockKey = "queue_processing";
 
   if (queueProcessingLock.has(lockKey)) {
-    console.log("Queue processing already in progress, skipping...");
     return;
   }
 
   queueProcessingLock.add(lockKey);
 
   try {
-    console.log("🔄 Processing trade queue...");
-
     const queryRunner = dbConnect.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -388,15 +386,14 @@ export const processTradeQueue = async (): Promise<void> => {
           isEscalated: false,
         },
         order: {
-          platformCreatedAt: "ASC", // This ensures FIFO based on when trade was created on platform
-          createdAt: "ASC", // Secondary sort by DB creation time
+          platformCreatedAt: "ASC",
+          createdAt: "ASC",
         },
         lock: { mode: "pessimistic_write" },
       });
 
       if (queuedTrades.length === 0) {
         await queryRunner.commitTransaction();
-        console.log("📭 No trades in queue");
         return;
       }
 
@@ -661,14 +658,13 @@ export const pollAndAssignLiveTrades = async () => {
 
     // Only poll and sync trades to database/queue - no assignment processing
     await assignLiveTradesInternal();
-    console.log("✅ Poll complete - trades synced to queue");
   } catch (error: unknown) {
     console.error("pollAndAssignLiveTrades error:", error);
 
     if (error instanceof Error) {
       if (error.message.includes("not Connected")) {
         try {
-          await dbConnect.connect();
+          await dbConnect.initialize();
         } catch (reconnectErr) {
           console.error("Failed to reconnect:", reconnectErr);
         }
@@ -764,8 +760,6 @@ export const getTradeQueueStatus = async (
 };
 
 let isProcessing = false;
-
-let lastQueueProcessTime = 0;
 
 // Add property to track last queue processing
 (pollAndAssignLiveTrades as any).lastQueueProcess = 0;
@@ -1298,9 +1292,6 @@ export const getFeedbackStats = async (
     const accountRepo = dbConnect.getRepository(Account);
     const accounts = await accountRepo.find();
 
-    // console.log(`Found ${accounts.length} total accounts`);
-
-    // Filter to only include Paxful and Noones accounts
     const filteredAccounts = accounts.filter(
       (account) =>
         account.platform.toLowerCase() === "paxful" ||
@@ -1437,8 +1428,6 @@ export const getFeedbackStats = async (
             role: "buyer", // or dynamically determine based on your needs
             rating: 1,
           });
-
-          // console.log(`Received positive feedback count for ${account.account_username}: ${positiveFeedbackCount}`);
         } catch (error: any) {
           console.error(
             `Error fetching positive feedback for ${account.account_username}:`,
@@ -1534,8 +1523,6 @@ async function fetchAllOffers(
 
       if (service instanceof NoonesService) {
         const rawOffers = await service.listActiveOffers();
-        // console.log('Raw Noones offers:', rawOffers); // Debug logging
-
         offers = rawOffers.map((offer) => ({
           ...offer,
           margin: offer.margin || offer.profit_margin,
@@ -1738,14 +1725,10 @@ export const activateDeactivatedOffers = async (
 
     for (const service of allServices) {
       try {
-        // console.log(`[${service.label}] → Fetching deactivated offers...`);
         const deactivatedOffers = await service.getDeactivatedOffers();
-        // console.log(`[${service.label}] → Found ${deactivatedOffers.length} deactivated offers`);
-
         let activatedCount = 0;
 
         for (const offer of deactivatedOffers) {
-          // Check different possible hash property names
           const hash = offer.offer_hash || offer.hash || offer.offer_id;
 
           if (!hash) {
@@ -1945,11 +1928,11 @@ export const updateOffers = async (
     }
 
     if (typeof costprice === "string") {
-      costprice = parseFloat(costprice.replace(/,/g, ""));
+      costprice = Number.parseFloat(costprice.replace(/,/g, ""));
     }
 
     if (typeof usdtrate === "string") {
-      usdtrate = parseFloat(usdtrate.replace(/,/g, ""));
+      usdtrate = Number.parseFloat(usdtrate.replace(/,/g, ""));
     }
 
     if (isNaN(costprice) || isNaN(usdtrate)) {
@@ -1977,13 +1960,7 @@ export const updateOffers = async (
       latestRate = ratesRepo.create({
         platformCostPrices: {},
       });
-      // console.log(`Creating new rates record`);
     }
-    // else {
-    //   console.log(`Found existing rates record with ID: ${latestRate.id}`);
-    // }
-
-    // Ensure platformCostPrices exists and is an object
     if (
       !latestRate.platformCostPrices ||
       typeof latestRate.platformCostPrices !== "object"
@@ -1995,9 +1972,7 @@ export const updateOffers = async (
     latestRate.platformCostPrices[platformKey] = costprice;
 
     try {
-      // Save the updated record
       await ratesRepo.save(latestRate);
-      // console.log(`Successfully updated cost price for ${platformKey} to ${costprice} in record ${latestRate.id}`);
     } catch (error) {
       console.error(`Failed to update cost price for ${platformKey}:`, error);
       return res.status(500).json({
@@ -2039,7 +2014,6 @@ export const updateOffers = async (
     }
 
     const rates = await fetchPlatformRates();
-    // console.log("Platform rates for NGN: ", rates);
 
     if (!rates[platformKey]) {
       return res.status(400).json({
@@ -2050,12 +2024,8 @@ export const updateOffers = async (
     const currentRate = rates[platformKey];
 
     const btcMargin = (costprice / currentRate.btcNgnRate - 1) * 100;
-    // console.log("BTC Margin: ", btcMargin);
     const usdtMargin = (usdtrate / currentRate.usdtNgnRate - 1) * 100;
 
-    // console.log(`Calculated margins - BTC: ${btcMargin}, USDT: ${usdtMargin}`);
-
-    // Fetch active offers for this account
     let offers: any[] = [];
 
     try {
@@ -2073,8 +2043,6 @@ export const updateOffers = async (
           offers = offers ? [offers] : [];
         }
       }
-
-      // console.log(`Found ${offers.length} active offers for ${platform}`);
     } catch (error) {
       console.error(`Error fetching offers for ${platform}:`, error);
       return res.status(500).json({
@@ -2104,8 +2072,6 @@ export const updateOffers = async (
       const marginToApply =
         offerCurrency.toUpperCase() === "USDT" ? usdtMargin : btcMargin;
 
-      // console.log(`Updating ${platform} offer ${offerId} (${offerCurrency}) with margin ${marginToApply}`);
-
       try {
         const updateResult = await service.updateOffer(offerId, marginToApply);
 
@@ -2128,8 +2094,6 @@ export const updateOffers = async (
           success: isSuccess,
           data: updateResult,
         });
-
-        // console.log(`Update result for ${offerId}: ${isSuccess ? "SUCCESS" : "FAILED"}`);
       } catch (error) {
         console.error(`Error updating offer ${offerId}:`, error);
         updateResults.push({
@@ -2185,7 +2149,7 @@ export const getPlatformCostPrice = async (req: Request, res: Response) => {
 
     const costPrice = latestRate.platformCostPrices[platform.toLowerCase()];
 
-    if (costPrice === undefined) {
+    if (costPrice == undefined) {
       return res.status(404).json({
         success: false,
         message: `No cost price found for platform ${platform}`,
@@ -2347,14 +2311,13 @@ export const getCurrencyRates = async (
 
     // Use Promise.allSettled for parallel fetching with error tolerance
     const ratePromises = [
-      // Noones Rates
       ...(services.noones.length > 0
         ? [
             services.noones[0]
               .getBitcoinPrice()
-              .then((rate) => {
+              .then((rate: number) => {
                 rates.noonesRate = rate;
-                console.log("Noones rate: ", rate);
+                console.log("Noones rate:", rate);
               })
               .catch((error) =>
                 console.error("Error fetching Noones rate:", error),
@@ -2362,14 +2325,14 @@ export const getCurrencyRates = async (
           ]
         : []),
 
-      // Binance Rates
+      // Binance
       ...(services.binance.length > 0
         ? [
             services.binance[0]
               .fetchAllRates()
               .then(({ btcUsdt }) => {
                 rates.binanceRate = btcUsdt.price;
-                console.log("Binance rate: ", btcUsdt.price);
+                console.log("Binance rate:", btcUsdt.price);
               })
               .catch((error) =>
                 console.error("Error fetching Binance rate:", error),
@@ -2377,14 +2340,20 @@ export const getCurrencyRates = async (
           ]
         : []),
 
-      // Paxful Rates
-      paxfulService
-        .getBitcoinPrice()
-        .then((rate) => {
-          rates.paxfulRate = rate;
-          console.log("Paxful rate: ", rate);
-        })
-        .catch((error) => console.error("Error fetching Paxful rate:", error)),
+      // Paxful (instance method)
+      ...(services.paxful.length > 0
+        ? [
+            services.paxful[0]
+              .getBitcoinPrice()
+              .then((rate: number) => {
+                rates.paxfulRate = rate;
+                console.log("Paxful rate:", rate);
+              })
+              .catch((error) =>
+                console.error("Error fetching Paxful rate:", error),
+              ),
+          ]
+        : []),
     ];
 
     // Wait for all promises to settle
@@ -2520,7 +2489,7 @@ export const getTradeDetails = async (
 
     // 4) Format messages for front-end
     const formattedMessages = messages.map((msg: any) => ({
-      id: msg.id || Math.random().toString(36).substr(2, 9),
+      id: msg.id || randomUUID(),
       content: msg.text ?? msg.content ?? "",
       sender: {
         id: msg.author?.externalId || "system",
@@ -2769,7 +2738,7 @@ export const getWalletBalances = async (
         platform: string,
       ) => {
         // Extract the raw balance value - could be string or number
-        let raw = balance.free ?? balance.balance;
+        const raw = balance.free ?? balance.balance;
 
         // Handle specific conversions for each platform
         let asNumber: number;
@@ -2778,10 +2747,10 @@ export const getWalletBalances = async (
           // Paxful returns satoshis
           asNumber =
             typeof raw === "string"
-              ? parseFloat(raw) / 100000000
+              ? Number.parseFloat(raw) / 100000000
               : raw / 100000000;
         } else {
-          asNumber = typeof raw === "string" ? parseFloat(raw) : raw;
+          asNumber = typeof raw === "string" ? Number.parseFloat(raw) : raw;
         }
 
         // Get appropriate decimal precision from lookup table
@@ -2793,7 +2762,7 @@ export const getWalletBalances = async (
         }
 
         // For larger numbers, return as number
-        return parseFloat(asNumber.toFixed(precision));
+        return Number.parseFloat(asNumber.toFixed(precision));
       };
 
       if (balanceData.error) {
@@ -2848,13 +2817,13 @@ export const getCompletedPaidTrades = async (
     const userType = req.user?.userType ?? "";
     const isPrivileged = ["admin", "customer-support"].includes(userType);
 
-    const page = parseInt((req.query.page as string) || "1", 10);
-    const limit = parseInt((req.query.limit as string) || "10", 10);
+    const page = Number.parseInt((req.query.page as string) || "1", 10);
+    const limit = Number.parseInt((req.query.limit as string) || "10", 10);
     const skip = (page - 1) * limit;
 
     // Initialize platform services
     const services = await initializePlatformServices();
-    let allTrades: any[] = [];
+    const allTrades: any[] = [];
 
     // Collect trades from all platforms and accounts
     for (const platform of Object.keys(services) as Array<
@@ -3012,13 +2981,11 @@ export const getCompletedPayerTrades = async (
       userType,
     );
 
-    const page = parseInt((req.query.page as string) || "1", 10);
-    const limit = parseInt((req.query.limit as string) || "10", 10);
+    const page = Number.parseInt((req.query.page as string) || "1", 10);
+    const limit = Number.parseInt((req.query.limit as string) || "10", 10);
     const skip = (page - 1) * limit;
 
     const tradeRepo = queryRunner.manager.getRepository(Trade);
-
-    const rateRepo = queryRunner.manager.getRepository(Rates);
 
     let qb = tradeRepo
       .createQueryBuilder("trade")
@@ -3192,8 +3159,8 @@ export const getAllTrades = async (
 
   try {
     // Pagination
-    const page = parseInt((req.query.page as string) || "1", 10);
-    const limit = parseInt((req.query.limit as string) || "10", 10);
+    const page = Number.parseInt((req.query.page as string) || "1", 10);
+    const limit = Number.parseInt((req.query.limit as string) || "10", 10);
     const skip = (page - 1) * limit;
 
     // 1) Fetch live "Active Funded" trades
@@ -3201,7 +3168,6 @@ export const getAllTrades = async (
     const liveFiltered = liveTrades.filter(
       (t) => t.trade_status.toLowerCase() === "active funded",
     );
-    const liveHashes = liveFiltered.map((t) => t.trade_hash);
 
     // Build a quick map from tradeHash → live record
     const liveMap = new Map<string, (typeof liveFiltered)[0]>(
@@ -3374,8 +3340,8 @@ export const getUnfinishedTrades = async (
 ) => {
   try {
     const tradeRepository = dbConnect.getRepository(Trade);
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
+    const page = Number.parseInt(req.query.page as string) || 1;
+    const limit = Number.parseInt(req.query.limit as string) || 10;
     const skip = (page - 1) * limit;
 
     // Example: return trades that are not completed or not marked as "Paid"
@@ -3410,11 +3376,7 @@ export const getUnfinishedTrades = async (
   }
 };
 
-export const updateCapRate = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
+export const updateCapRate = async (req: Request, res: Response) => {
   try {
     const { btcngnrate, marketCap } = req.body;
 
@@ -3505,7 +3467,7 @@ export const setOrUpdateRates = async (
 
     const ratesRepository = dbConnect.getRepository(Rates);
     const ratesAll = await ratesRepository.find();
-    let rates = ratesAll.length > 0 ? ratesAll[0] : new Rates();
+    const rates = ratesAll.length > 0 ? ratesAll[0] : new Rates();
 
     // Set global rate values
     rates.sellingPrice = sellingPrice;
@@ -3562,30 +3524,24 @@ export const getActiveFundedTotal = async (
 ) => {
   try {
     const liveTrades = await aggregateLiveTrades();
-    // console.log(`Found ${liveTrades.length} live trades`);
 
     let totalActiveFundedBTC = 0;
     let totalActiveFundedUSDT = 0;
 
     for (const trade of liveTrades) {
       const code = (trade.crypto_currency_code || "").toUpperCase();
-      const raw = parseFloat(trade.crypto_amount_total ?? "0");
-      // console.log(`Processing trade: ${trade.trade_hash}, Currency: ${code}, Raw amount: ${raw}, Status: ${trade.trade_status}`);
+      const raw = Number.parseFloat(trade.crypto_amount_total ?? "0");
 
       const decimals = DECIMALS[code] || 0;
       const amt = raw / 10 ** decimals;
-      // console.log(`Adjusted amount: ${amt}`);
 
       if (code === "BTC") {
         totalActiveFundedBTC += amt;
-        // console.log(`Adding to BTC total, now: ${totalActiveFundedBTC}`);
       } else if (code === "USDT") {
         totalActiveFundedUSDT += amt;
-        // console.log(`Adding to USDT total, now: ${totalActiveFundedUSDT}`);
       }
     }
 
-    // console.log(`Final totals - BTC: ${totalActiveFundedBTC}, USDT: ${totalActiveFundedUSDT}`);
     return res.status(200).json({
       success: true,
       data: {
@@ -3610,21 +3566,13 @@ export const getVendorCoin = async (
     let totalVendorCoinUSDT = 0;
 
     // Helper: extract and sum “paid” trades
-    const accumulatePaid = (
-      trades: any[],
-      platform: string,
-      accountId: string,
-    ) => {
+    const accumulatePaid = (trades: any[]) => {
       for (const t of trades) {
         // 1) status: Paxful uses `trade_status`, Noones uses `status`
         const status = (t.trade_status ?? t.status ?? "")
           .toString()
           .toLowerCase();
 
-        // console.log(
-        //   `[${platform}/${accountId}] Vendor trade status:`,
-        //   status
-        // );
         if (status !== "paid") continue;
 
         // 2) currency code: snake_case or camelCase
@@ -3633,12 +3581,9 @@ export const getVendorCoin = async (
           .toUpperCase();
 
         // 3) amount: snake_case or camelCase
-        const amount = parseFloat(
+        const amount = Number.parseFloat(
           t.crypto_amount_requested ?? t.cryptoAmountRequested ?? "0",
         );
-        // console.log(
-        //   `[${platform}/${accountId}] Paid ${amount} ${code}`
-        // );
 
         const decimals = DECIMALS[code] || 0;
         const amt = amount / 10 ** decimals;
@@ -3652,11 +3597,8 @@ export const getVendorCoin = async (
     for (const platform of ["paxful", "noones"] as const) {
       for (const svc of services[platform]) {
         try {
-          // coalesce accountId in case it’s undefined
-          const acct = svc.accountId ?? "";
-
           const activeTrades = (await svc.listActiveTrades()) || [];
-          accumulatePaid(activeTrades, platform, acct);
+          accumulatePaid(activeTrades);
         } catch (err) {
           console.error(
             `Error fetching active trades from ${platform}/${svc.accountId}:`,
@@ -3665,13 +3607,6 @@ export const getVendorCoin = async (
         }
       }
     }
-
-    // console.log(
-    //   "Final totals — BTC:",
-    //   totalVendorCoinBTC,
-    //   "USDT:",
-    //   totalVendorCoinUSDT
-    // );
 
     return res.status(200).json({
       success: true,
@@ -3970,7 +3905,7 @@ export const getEscalatedTradeById = async (
         ? {
             messages:
               tradeChat.messages?.map((msg: any) => ({
-                id: msg.id || Math.random().toString(36).substr(2, 9),
+                id: msg.id || randomUUID(),
                 content: msg.text || "",
                 sender: {
                   id: msg.author?.externalId || "system",
@@ -3978,7 +3913,9 @@ export const getEscalatedTradeById = async (
                 },
                 createdAt:
                   msg.timestamp && !isNaN(msg.timestamp)
-                    ? new Date(parseInt(msg.timestamp) * 1000).toISOString()
+                    ? new Date(
+                        Number.parseInt(msg.timestamp) * 1000,
+                      ).toISOString()
                     : new Date().toISOString(),
               })) || [],
             attachments: tradeChat.attachments || [],

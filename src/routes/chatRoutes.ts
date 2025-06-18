@@ -1,13 +1,13 @@
 import { Router } from "express";
 import { body, param } from "express-validator";
-import { authenticate } from "../middlewares/authenticate";
-import validateRequest from "../middlewares/validateRequest";
 import {
   createChat,
-  getChats,
-  getChat,
   deleteChat,
+  getChat,
+  getChats,
 } from "../controllers/chatsController";
+import { authenticate } from "../middlewares/authenticate";
+import validateRequest from "../middlewares/validateRequest";
 
 const router: any = Router();
 

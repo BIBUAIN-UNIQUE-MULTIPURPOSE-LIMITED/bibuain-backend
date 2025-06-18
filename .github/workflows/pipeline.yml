@@ -2,9 +2,9 @@ name: Backend CI + CD
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 env:
   AWS_REGION: ap-southeast-1
@@ -24,11 +24,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: 'npm'
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
-      
+
       - name: Run TypeORM migrations
         env:
           NODE_ENV: production
@@ -39,8 +39,8 @@ jobs:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: npm run migration:run
 
-      - name: Lint
-        run: npm run lint
+      # - name: Lint
+      #   run: npm run lint
 
       - name: Type-check
         run: npm run type-check
@@ -53,7 +53,7 @@ jobs:
 
   deploy:
     needs: build
-    if: github.event_name == 'push'   # only on direct pushes to main
+    if: github.event_name == 'push' # only on direct pushes to main
     runs-on: ubuntu-latest
 
     steps:

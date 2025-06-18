@@ -1,51 +1,50 @@
 import express from "express";
 import {
+  activateDeactivatedOffers,
+  activateOfferController,
+  assignLiveTrades,
+  cancelTrade,
+  escalateTrade,
+  getAccounts,
+  getActiveFundedTotal,
+  getAllTrades,
+  getCCstats,
+  getCapRate,
+  getCompletedPaidTrades,
+  getCompletedPayerTrades,
   getCurrencyRates,
+  getDashboardStats,
+  getEscalatedTradeById,
+  getEscalatedTrades,
+  getFeedbackStats,
+  getLiveTrades,
+  getOfferDetailsController,
+  getOffersMargin,
+  getPayerTrade,
+  getPlatformCostPrice,
+  getPlatformRates,
   getRates,
   getTradeDetails,
+  getUnfinishedTrades,
+  getVendorCoin,
   getWalletBalances,
+  markTradeAsPaid,
+  reassignTrade,
   sendTradeChatMessage,
   setOrUpdateRates,
-  getPayerTrade,
-  markTradeAsPaid,
-  getDashboardStats,
-  getCompletedPaidTrades,
-  updateOffers,
   turnOffAllOffers,
   turnOnAllOffers,
-  reassignTrade,
-  getLiveTrades,
-  assignLiveTrades,
-  getAllTrades,
-  getUnfinishedTrades,
-  getOffersMargin,
-  getAccounts,
   updateAccountRates,
-  getFeedbackStats,
-  getActiveFundedTotal,
-  getCapRate,
   updateCapRate,
-  getVendorCoin,
-  escalateTrade,
-  getEscalatedTrades,
-  getEscalatedTradeById,
-  getPlatformRates,
-  cancelTrade,
-  getCompletedPayerTrades,
-  activateDeactivatedOffers,
-  getOfferDetailsController,
-  activateOfferController,
-  getCCstats,
-  getPlatformCostPrice,
+  updateOffers,
 } from "../controllers/tradeController";
 import { authenticate, roleAuth } from "../middlewares/authenticate";
-import { User, UserType } from "../models/user";
+import { UserType } from "../models/user";
 
 const router: any = express.Router();
 
 router.use(authenticate);
 
-// Currency and Rates Endpoints:
 router.get("/currency/rates", getCurrencyRates);
 
 router.post(
@@ -68,7 +67,6 @@ router.get(
 
 router.post("/update-account-rates", updateAccountRates);
 
-// Trade Endpoints:
 router.get("/live-trades", getLiveTrades);
 
 router.post("/assign-live-trade", assignLiveTrades);
@@ -88,7 +86,6 @@ router.get("/all-trades", getAllTrades);
 
 router.get("/unfinished-trades", getUnfinishedTrades);
 
-// Payer and Dashboard Endpoints:
 router.get("/dashboard", roleAuth([UserType.ADMIN]), getDashboardStats);
 
 router.get("/feedback-stats", getFeedbackStats);
@@ -99,11 +96,9 @@ router.get("/completed", getCompletedPaidTrades);
 
 router.get("/payer-trade", getCompletedPayerTrades);
 
-// Wallet and Offers Endpoints
-
 router.get(
   "/wallet-balances",
-  // roleAuth([UserType.ADMIN, UserType.RATER]),
+  roleAuth([UserType.ADMIN, UserType.RATER]),
   getWalletBalances,
 );
 

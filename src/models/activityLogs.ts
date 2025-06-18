@@ -1,10 +1,10 @@
 import {
-  Entity,
-  PrimaryGeneratedColumn,
   Column,
-  ManyToOne,
   CreateDateColumn,
+  Entity,
   JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
 } from "typeorm";
 import { User } from "./user";
 
@@ -137,11 +137,11 @@ export class ActivityLog {
   description!: string;
 
   @Column({ type: "jsonb", nullable: true })
-  details?: Record<string, any>;
+  details?: Record<string, unknown>;
 
   @Column({ type: "boolean", default: false })
   isSystemGenerated!: boolean;
 
   @Column({ type: "jsonb", nullable: true })
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }

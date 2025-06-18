@@ -1,27 +1,29 @@
-import express, { NextFunction, Request, Response } from "express";
-import cors from "cors";
-import cron from "node-cron";
+import path from "path";
 import bodyParser from "body-parser";
 import cookieParser from "cookie-parser";
-import path from "path";
-import errorHandlerMiddleware from "./middlewares/errorMiddleware";
-import userRoutes from "./routes/userRoutes";
-import adminRoutes from "./routes/adminRoutes";
-import chatsRouter from "./routes/chatRoutes";
-import activityRoutes from "./routes/activityLogsRoutes";
-import bankRoutes from "./routes/bankRoutes";
-import messageRouter from "./routes/messagesRoutes";
-import tradeRoutes from "./routes/tradeRoutes";
-import messageTemplateRoutes from "./routes/templateMessages";
-import notificationRoutes from "./routes/notificationRoutes";
-import shiftRoutes from "./routes/shiftRoutes";
-import accountRoutes from "./routes/accountRoutes";
+import cors from "cors";
+import express, { type Request, type Response } from "express";
+import cron from "node-cron";
 import { reloadFreshBanks } from "./controllers/bankController";
 import {
   pollAndAssignLiveTrades,
   processTradeQueue,
 } from "./controllers/tradeController";
+import errorHandlerMiddleware from "./middlewares/errorMiddleware";
+import accountRoutes from "./routes/accountRoutes";
+import activityRoutes from "./routes/activityLogsRoutes";
+import adminRoutes from "./routes/adminRoutes";
+import bankRoutes from "./routes/bankRoutes";
+import chatsRouter from "./routes/chatRoutes";
+import messageRouter from "./routes/messagesRoutes";
+import notificationRoutes from "./routes/notificationRoutes";
+import shiftRoutes from "./routes/shiftRoutes";
+import messageTemplateRoutes from "./routes/templateMessages";
+import tradeRoutes from "./routes/tradeRoutes";
+import userRoutes from "./routes/userRoutes";
+
 const app = express();
+app.disable("x-powered-by");
 
 // CORS Configuration
 const corsOptions = {
@@ -42,26 +44,11 @@ app.use(bodyParser.json());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// // Cron Job for Trade Assignment
-// cron
-//   .schedule("*/10 * * * * *", async () => {
-//     console.log("Running trade assignment job...");
-//     await fetchAndStoreTrades();
-//     await assignTradesToPayers();
-//   })
-//   .start();
-
-// initializeShiftCrons();
-
 if (process.env.NODE_ENV !== "test") {
   // poll & assign every 5 seconds
   cron.schedule(
     "*/6 * * * * *",
     async () => {
-      console.log(
-        "🔄 [Cron] pollAndAssignLiveTrades @",
-        new Date().toISOString(),
-      );
       try {
         await pollAndAssignLiveTrades();
       } catch (e) {
@@ -75,7 +62,6 @@ if (process.env.NODE_ENV !== "test") {
   cron.schedule(
     "*/5 * * * * *",
     async () => {
-      console.log("🔄 [Cron] processTradeQueue @", new Date().toISOString());
       try {
         await processTradeQueue();
       } catch (e) {
@@ -115,15 +101,12 @@ app.use("/api/v1/chat", chatsRouter);
 app.use("/api/v1/message-templates", messageTemplateRoutes);
 app.use("/api/v1/message", messageRouter);
 
-//http://localhost:7001/api/v1/admin/create-admin
-
 // Static File Serving
 const uploadsDir = path.resolve();
 app.use("/uploads", express.static(path.join(uploadsDir, "uploads")));
 
 // Debugging Endpoint
 app.get("/debug", (req: Request, res: Response) => {
-  // console.log(req.cookies);
   res.json(req.cookies);
 });
 
@@ -131,7 +114,7 @@ app.get("/debug", (req: Request, res: Response) => {
 app.use(errorHandlerMiddleware);
 
 // 404 Handler
-app.use((req: Request, res: Response, next: NextFunction) => {
+app.use((req: Request, res: Response) => {
   res.status(404).json({ message: "Resource Not Found!" });
 });
 

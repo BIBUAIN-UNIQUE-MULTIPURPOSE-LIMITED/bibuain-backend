@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from "express";
+import type { NextFunction, Request, Response } from "express";
 import dbConnect from "../config/database";
 import { Bank, BankTag } from "../models/bank";
 import { Shift } from "../models/shift";
@@ -249,6 +249,7 @@ export const useBank = async (
     // Deduct funds and update status
     const remaining = bank.funds - amountUsed;
     bank.funds = Math.max(0, remaining);
+
     // Update status based on remaining funds
     bank.tag = bank.funds > 0 ? BankTag.USED : BankTag.ROLLOVER;
 

@@ -1,19 +1,19 @@
-import { Request, Response, NextFunction, RequestHandler } from "express";
-import { User } from "../models/user";
-import dbConnect from "../config/database";
+import crypto, { randomInt } from "crypto";
+import fs from "fs";
 import bcrypt from "bcryptjs";
+import type { NextFunction, Request, RequestHandler, Response } from "express";
+import { validationResult } from "express-validator";
 import jwt from "jsonwebtoken";
 import speakeasy from "speakeasy";
 import { v4 as uuidv4 } from "uuid";
-import { validationResult } from "express-validator";
-import { UserRequest } from "../middlewares/authenticate";
-import ErrorHandler from "../utils/errorHandler";
 import cloudinary from "../config/cloudinary";
-import fs from "fs";
-import sendEmail from "../services/mailService";
-import crypto from "crypto";
+import dbConnect from "../config/database";
+import type { UserRequest } from "../middlewares/authenticate";
 import { ActivityLog, ActivityType } from "../models/activityLogs";
+import { User } from "../models/user";
 import { io } from "../server";
+import sendEmail from "../services/mailService";
+import ErrorHandler from "../utils/errorHandler";
 
 const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 const TOKEN_EXPIRATION = "1d";
@@ -31,7 +31,7 @@ const createLog = async (
   user: User | null,
   activity: ActivityType,
   description: string,
-  details?: Record<string, any>,
+  details?: Record<string, unknown>,
 ) => {
   if (user === null) {
     return;
@@ -48,6 +48,11 @@ const createLog = async (
   await activityLogRepo.save(log);
 };
 
+/*
+ * @desc User login controller
+ * @returns {Object} JSON response with success status and message
+ * @throws {ErrorHandler} If validation fails or user not found or password mismatch
+ */
 export const login = async (
   req: Request,
   res: Response,
@@ -82,7 +87,7 @@ export const login = async (
     }
 
     // Generate a 6-digit 2FA code
-    const twoFaCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const twoFaCode = randomInt(100_000, 1_000_000).toString();
     user.twoFaCode = twoFaCode;
     user.twoFaExpires = new Date(Date.now() + 10 * 60 * 1000);
     await userRepo.save(user);
@@ -108,6 +113,11 @@ export const login = async (
   }
 };
 
+/*
+ * @desc Verify 2FA code and complete login
+ * @returns {Object} JSON response with success status and user data
+ * @throws {ErrorHandler} If 2FA code is invalid or expired, or user not found
+ */
 export const verifyTwoFa: RequestHandler = async (
   req: Request,
   res: Response,
@@ -165,6 +175,11 @@ export const verifyTwoFa: RequestHandler = async (
   }
 };
 
+/*
+ * @desc User logout controller
+ * @returns {Object} JSON response with success status and message
+ * @throws {ErrorHandler} If user not found or logout fails
+ */
 export const logout = async (
   req: UserRequest,
   res: Response,
@@ -198,6 +213,11 @@ export const logout = async (
   }
 };
 
+/*
+ * @desc Get current user details
+ * @returns {Object} JSON response with success status and user data
+ * @throws {ErrorHandler} If user not found or unauthorized access
+ */
 export const getCurrentUser = async (
   req: UserRequest,
   res: Response,
@@ -212,7 +232,6 @@ export const getCurrentUser = async (
     const userRepo = dbConnect.getRepository(User);
     const user = await userRepo.findOne({ where: { id: userId } });
 
-    // if (!user || !user.isEmailVerified) {
     if (!user) {
       return next(new ErrorHandler("Invalid email! Please try again.", 401));
     }
@@ -233,6 +252,11 @@ export const getCurrentUser = async (
   }
 };
 
+/*
+ * @desc Enable Two-Factor Authentication (2FA) for the user
+ * @returns {Object} JSON response with success status and 2FA setup details
+ * @throws {ErrorHandler} If user ID is missing or user not found
+ */
 export const enableTwoFa: RequestHandler = async (
   req: UserRequest,
   res,
@@ -266,6 +290,11 @@ export const enableTwoFa: RequestHandler = async (
   }
 };
 
+/*
+ * @desc Verify Two-Factor Authentication (2FA) code
+ * @returns {Object} JSON response with success status and user data
+ * @throws {ErrorHandler} If user ID is missing, user not found, or 2FA code is invalid
+ */
 export const verifyEmail: RequestHandler = async (req, res, next) => {
   try {
     const { code, password } = req.body;
@@ -332,6 +361,11 @@ export const verifyEmail: RequestHandler = async (req, res, next) => {
   }
 };
 
+/*
+ * @desc Request email verification code
+ * @returns {Object} JSON response with success status and verification code
+ * @throws {ErrorHandler} If user ID is missing or user not found
+ */
 export const requestEmailVerification: RequestHandler = async (
   req: UserRequest,
   res,
@@ -374,6 +408,11 @@ export const requestEmailVerification: RequestHandler = async (
   }
 };
 
+/*
+ * @desc Request password reset
+ * @returns {Object} JSON response with success status and reset token
+ * @throws {ErrorHandler} If email is not provided or user not found
+ */
 export const requestPasswordReset: RequestHandler = async (req, res, next) => {
   try {
     const { email } = req.body;
@@ -407,7 +446,11 @@ export const requestPasswordReset: RequestHandler = async (req, res, next) => {
   }
 };
 
-// Controller for editing user details
+/*
+ * @desc Edit user details (profile update)
+ * @returns {Object} JSON response with success status and updated user data
+ * @throws {ErrorHandler} If validation fails, user not found, or file upload fails
+ */
 export const editUserDetails = async (
   req: UserRequest,
   res: Response,
@@ -489,8 +532,11 @@ export const editUserDetails = async (
   }
 };
 
-// Controller for Changing User Password
-
+/*
+ * @desc Change user password
+ * @returns {Object} JSON response with success status and message
+ * @throws {ErrorHandler} If validation fails, user not found, or current password is incorrect
+ */
 export const changePassword = async (
   req: UserRequest,
   res: Response,
@@ -547,8 +593,11 @@ export const changePassword = async (
   }
 };
 
-// Forget Password Controller
-
+/*
+ * @desc Forgot Password - Request password reset
+ * @returns {Object} JSON response with success status and message
+ * @throws {ErrorHandler} If email is not provided or user does not exist
+ */
 export const forgotPassword: RequestHandler = async (req, res, next) => {
   try {
     const { email } = req.body;
@@ -605,8 +654,11 @@ export const forgotPassword: RequestHandler = async (req, res, next) => {
   }
 };
 
-// Reset Password
-
+/*
+ * @desc Reset Password - Update user password using reset code
+ * @returns {Object} JSON response with success status and message
+ * @throws {ErrorHandler} If validation fails, reset code is invalid or expired, or passwords do not match
+ */
 export const resetPassword: RequestHandler = async (req, res, next) => {
   try {
     const { newPassword, confirmNewPassword, code } = req.body;
