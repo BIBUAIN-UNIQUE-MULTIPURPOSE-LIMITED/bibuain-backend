@@ -2739,7 +2739,7 @@ export const getWalletBalances = async (
           balances[service.accountId] = {
             platform: service.platform,
             label: service.label,
-            balances: balance, // This will now be an array with BTC (and USDT for Binance/Noones)
+            balances: balance,
           };
         } catch (error) {
           console.error(`Error fetching balance for ${service.label}:`, error);
@@ -2761,32 +2761,30 @@ export const getWalletBalances = async (
         currency: string,
         platform: string,
       ) => {
-        // Extract the raw balance value - could be string or number
+        // Raw payload value (string or number)
         const raw = balance.free ?? balance.balance;
 
-        // Handle specific conversions for each platform
         let asNumber: number;
-
-        if (platform === "paxful" && currency === "BTC") {
-          // Paxful returns satoshis
-          asNumber =
-            typeof raw === "string"
-              ? Number.parseFloat(raw) / 100000000
-              : raw / 100000000;
+        // Paxful returns satoshis for BTC and micros for USDT
+        if (platform === "paxful") {
+          const divisor =
+            currency === "BTC" ? 1e8 : currency === "USDT" ? 1e6 : 1;
+          const parsed = typeof raw === "string" ? parseFloat(raw) : raw;
+          asNumber = parsed / divisor;
         } else {
-          asNumber = typeof raw === "string" ? Number.parseFloat(raw) : raw;
+          // all other platforms already give you the human‐readable amount
+          asNumber = typeof raw === "string" ? parseFloat(raw) : raw;
         }
 
-        // Get appropriate decimal precision from lookup table
+        // How many decimals you want
         const precision = DECIMALS[currency] ?? 8;
 
-        // For very small numbers, return as string to prevent scientific notation
-        if (asNumber < 0.0001) {
-          return asNumber.toFixed(precision); // Returns string
+        // Prevent scientific notation on tiny amounts
+        if (asNumber < 1 / 10 ** precision) {
+          return asNumber.toFixed(precision);
         }
 
-        // For larger numbers, return as number
-        return Number.parseFloat(asNumber.toFixed(precision));
+        return parseFloat(asNumber.toFixed(precision));
       };
 
       if (balanceData.error) {
