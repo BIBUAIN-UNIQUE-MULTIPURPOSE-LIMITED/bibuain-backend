@@ -27,11 +27,7 @@ app.disable("x-powered-by");
 
 // CORS Configuration
 const corsOptions = {
-  origin: [
-    "https://app.bibuain.ng",
-    "http://localhost:5173",
-    "https://main.d251fvvwfaaim4.amplifyapp.com",
-  ],
+  origin: [process.env.FRONTEND_URL || "http://localhost:5173"],
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"],
