@@ -2,5 +2,6 @@
 .env
 /dist
 dist
+.env.production
 # /src/migration/*
 # !/src/migration/.gitkeep

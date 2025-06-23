@@ -114,6 +114,7 @@ export class Trade {
   cryptoAmountRequested!: number;
 
   @Column({
+    name: "platform_created_at",
     type: "timestamptz",
     nullable: true,
     comment: "Original trade time from platform",

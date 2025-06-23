@@ -93,8 +93,11 @@ export async function initializePlatformServices(): Promise<PlatformServices> {
   return services;
 }
 
+/*
+ * Check if the database connection is healthy.
+ * Returns true if connected, false otherwise.
+ */
 const checkDbConnection = async (): Promise<boolean> => {
-  // If DataSource hasn't finished initializing yet, skip the check
   if (!dbConnect.isInitialized) {
     console.warn("DB health-check skipped: DataSource not yet initialized");
     return false;
@@ -109,8 +112,14 @@ const checkDbConnection = async (): Promise<boolean> => {
   }
 };
 
+// const in charge of queue processing
 const queueProcessingLock = new Set<string>();
 
+/*
+ * Upsert live trades into the database.
+ * Maps platform trade statuses to internal TradeStatus enum.
+ * Emits events for status changes and handles queue tracking.
+ */
 export const upsertLiveTrades = async (liveTrades: any[]) => {
   const tradeRepo = dbConnect.getRepository(Trade);
 
@@ -128,7 +137,7 @@ export const upsertLiveTrades = async (liveTrades: any[]) => {
     };
     const newStatus = statusMap[lower] ?? TradeStatus.ACTIVE_FUNDED;
 
-    // build only the fields you need to upsert
+    // save new trades to the database
     const mapped: Partial<Trade> = {
       tradeHash: t.trade_hash,
       accountId: t.accountId,
@@ -155,7 +164,6 @@ export const upsertLiveTrades = async (liveTrades: any[]) => {
       usdtNgnRate: t.crypto_current_rate_usd,
       platformCreatedAt: new Date(t.started_at),
       dollarRate: t.fiat_price_per_btc / t.crypto_current_rate_usd,
-      // Add queue tracking fields
       queuePosition: null,
       queuedAt: null,
       lastQueueCheck: new Date(),
@@ -174,12 +182,10 @@ export const upsertLiveTrades = async (liveTrades: any[]) => {
       // Check if status is changing to emit proper event
       const statusChanged = existing.status !== newStatus;
 
-      // Update the trade
       await tradeRepo.update(existing.id, mapped);
 
-      // If status changed, emit event only (no queue processing here)
+      // If status changed, emit event
       if (statusChanged) {
-        // Emit event for status change
         io?.emit("tradeStatusChanged", {
           tradeId: existing.id,
           status: newStatus,
@@ -194,18 +200,12 @@ export const upsertLiveTrades = async (liveTrades: any[]) => {
             newStatus === TradeStatus.DISPUTED ||
             newStatus === TradeStatus.PAID)
         ) {
-          // Emit specifically to the assigned payer
           io.to(existing.assignedPayerId).emit("tradeCompleted", {
             tradeId: existing.id,
             status: newStatus,
             message: `Your trade has been ${newStatus.toLowerCase()}`,
           });
 
-          console.log(
-            `Notified payer ${existing.assignedPayerId} of trade completion: ${existing.id}`,
-          );
-
-          // Use the emitTradeStatusChange function if available
           if (typeof emitTradeStatusChange === "function") {
             emitTradeStatusChange(
               existing.id,
@@ -219,7 +219,6 @@ export const upsertLiveTrades = async (liveTrades: any[]) => {
         }
       }
     } else {
-      // For new trades, set initial queue tracking for ACTIVE_FUNDED trades
       if (mapped.status === TradeStatus.ACTIVE_FUNDED) {
         mapped.queuedAt = new Date();
       }
@@ -228,6 +227,11 @@ export const upsertLiveTrades = async (liveTrades: any[]) => {
   }
 };
 
+/*
+ * Aggregate live trades from all platforms.
+ * Fetches active trades from Paxful and Noones, filters by status,
+ * and upserts them into the database.
+ */
 const aggregateLiveTrades = async (): Promise<any[]> => {
   const services = await initializePlatformServices();
   let all: any[] = [];
@@ -269,6 +273,12 @@ const aggregateLiveTrades = async (): Promise<any[]> => {
   return filtered;
 };
 
+/*
+ * Sync cancelled trades by checking active trades on platforms.
+ * If a trade is no longer active, it updates the status to CANCELLED
+ * or deletes it if not escalated.
+ * Emits events for trade status changes and notifications.
+ */
 const syncCancelledTrades = async (): Promise<void> => {
   try {
     const services = await initializePlatformServices();
@@ -341,7 +351,6 @@ const syncCancelledTrades = async (): Promise<void> => {
         }
 
         if (assignedPayerId) {
-          // Send specific notification to the payer
           io.to(assignedPayerId).emit("tradeCancelled", {
             tradeId,
             status: TradeStatus.CANCELLED,
@@ -363,7 +372,11 @@ const syncCancelledTrades = async (): Promise<void> => {
   }
 };
 
-// New function to manage the trade queue properly
+/*
+ * Process the trade queue by assigning trades to available payers.
+ * Trades are assigned in strict FIFO order based on platformCreatedAt.
+ * Updates queue positions and emits events for assignments.
+ */
 export const processTradeQueue = async (): Promise<void> => {
   const lockKey = "queue_processing";
 
@@ -379,7 +392,7 @@ export const processTradeQueue = async (): Promise<void> => {
     await queryRunner.startTransaction();
 
     try {
-      // Get all queued trades in proper FIFO order (platformCreatedAt is key for order)
+      // Get all queued trades in proper FIFO order
       const queuedTrades = await queryRunner.manager.find(Trade, {
         where: {
           status: TradeStatus.ACTIVE_FUNDED,
@@ -401,7 +414,6 @@ export const processTradeQueue = async (): Promise<void> => {
       for (let i = 0; i < queuedTrades.length; i++) {
         const trade = queuedTrades[i];
         const newPosition = i + 1;
-
         if (trade.queuePosition !== newPosition) {
           trade.queuePosition = newPosition;
           if (!trade.queuedAt) {
@@ -412,7 +424,6 @@ export const processTradeQueue = async (): Promise<void> => {
         }
       }
 
-      // Get available payers
       const availablePayers = await getAvailablePayers();
 
       if (availablePayers.length === 0) {
@@ -433,10 +444,6 @@ export const processTradeQueue = async (): Promise<void> => {
       const busyPayerIds = new Set(busyPayers.map((t) => t.assignedPayerId!));
       const freePayers = availablePayers.filter((p) => !busyPayerIds.has(p.id));
 
-      console.log(
-        `📊 Queue status: ${queuedTrades.length} queued trades, ${freePayers.length} free payers`,
-      );
-
       let assignedCount = 0;
 
       // Assign trades to free payers in strict FIFO order
@@ -445,8 +452,8 @@ export const processTradeQueue = async (): Promise<void> => {
         i < Math.min(queuedTrades.length, freePayers.length);
         i++
       ) {
-        const trade = queuedTrades[i]; // Take trades in order (first in, first assigned)
-        const payer = freePayers[i]; // Assign to payers in order they became available
+        const trade = queuedTrades[i];
+        const payer = freePayers[i];
 
         // Double-check the trade is still available for assignment
         const freshTrade = await queryRunner.manager.findOne(Trade, {
@@ -455,9 +462,6 @@ export const processTradeQueue = async (): Promise<void> => {
         });
 
         if (!freshTrade || freshTrade.status !== TradeStatus.ACTIVE_FUNDED) {
-          console.log(
-            `⚠️ Trade ${trade.tradeHash} no longer available for assignment`,
-          );
           continue;
         }
 
@@ -465,7 +469,7 @@ export const processTradeQueue = async (): Promise<void> => {
         freshTrade.status = TradeStatus.ASSIGNED;
         freshTrade.assignedPayerId = payer.id;
         freshTrade.assignedAt = new Date();
-        freshTrade.queuePosition = null; // Remove from queue
+        freshTrade.queuePosition = null;
 
         await queryRunner.manager.save(freshTrade);
         assignedCount++;
@@ -484,35 +488,31 @@ export const processTradeQueue = async (): Promise<void> => {
 
       await queryRunner.commitTransaction();
 
-      if (assignedCount > 0) {
-        console.log(
-          `🎯 Queue processing complete: ${assignedCount} trades assigned`,
-        );
-      } else {
-        console.log("⏳ Queue processing complete: no assignments made");
-      }
-
       // Alert for long-waiting trades
       await checkForStaleQueuedTrades(queuedTrades);
     } catch (err) {
       await queryRunner.rollbackTransaction();
-      console.error("Error in processTradeQueue transaction:", err);
+      // console.error("Error in processTradeQueue transaction:", err);
       throw err;
     } finally {
       await queryRunner.release();
     }
   } catch (error) {
-    console.error("Error in processTradeQueue:", error);
+    // console.error("Error in processTradeQueue:", error);
+    throw error;
   } finally {
     queueProcessingLock.delete(lockKey);
   }
 };
 
-// Check for trades that have been waiting too long
+/*
+ * Check for stale queued trades that have been waiting too long.
+ * Emits an alert event if any trades have been queued for more than 10 minutes.
+ */
 const checkForStaleQueuedTrades = async (
   queuedTrades: Trade[],
 ): Promise<void> => {
-  const STALE_THRESHOLD = 10 * 60 * 1000; // 10 minutes
+  const STALE_THRESHOLD = 10 * 60 * 1000;
   const now = new Date().getTime();
 
   for (const trade of queuedTrades) {
@@ -523,7 +523,6 @@ const checkForStaleQueuedTrades = async (
           `ALERT: Trade ${trade.tradeHash} has been queued for ${Math.round(waitTime / 60000)} minutes (Position: ${trade.queuePosition})`,
         );
 
-        // Emit alert event
         io?.emit("longWaitingTrade", {
           tradeId: trade.id,
           tradeHash: trade.tradeHash,
@@ -535,31 +534,33 @@ const checkForStaleQueuedTrades = async (
   }
 };
 
+/*
+ * Internal function to assign live trades.
+ * Handles fetching, syncing, and processing trades from platforms.
+ * Updates statuses and emits events for trade changes.
+ */
 export const assignLiveTradesInternal = async (): Promise<any[]> => {
   const queryRunner = dbConnect.createQueryRunner();
   await queryRunner.connect();
   await queryRunner.startTransaction();
 
   try {
-    // 1) Cancel any stale trades no longer active on platform
     await syncCancelledTrades();
 
-    // 2) Fetch all "active funded" trades from platforms and sync to DB
     const liveTrades = await aggregateLiveTrades();
-
     if (liveTrades.length === 0) {
       await queryRunner.commitTransaction();
       return [];
     }
 
-    // 3) Load existing DB entries for these trades
+    // Load existing DB entries for these trades
     const hashes = liveTrades.map((t) => t.trade_hash);
     const existingTrades = await queryRunner.manager.find(Trade, {
       where: { tradeHash: In(hashes) },
     });
     const existingMap = new Map(existingTrades.map((t) => [t.tradeHash, t]));
 
-    // 4) Process status changes and queue new trades
+    // Process status changes and queue new trades
     for (const td of liveTrades) {
       const lower = td.trade_status.toLowerCase();
       const existing = existingMap.get(td.trade_hash);
@@ -588,7 +589,6 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
             }
             existing.lastQueueCheck = new Date();
             await queryRunner.manager.save(existing);
-            console.log(`Set ${td.trade_hash} → ACTIVE_FUNDED (queued)`);
           }
         } else if (lower === "paid" || lower === "completed") {
           if (existing.status !== TradeStatus.COMPLETED) {
@@ -599,7 +599,6 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
             existing.queuedAt = null;
             existing.completedAt = new Date();
             await queryRunner.manager.save(existing);
-
             io?.emit("tradeStatusChanged", {
               tradeId: existing.id,
               status: existing.status,
@@ -614,7 +613,6 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
             existing.queuedAt = null;
             existing.completedAt = new Date();
             await queryRunner.manager.save(existing);
-
             io?.emit("tradeStatusChanged", {
               tradeId: existing.id,
               status: existing.status,
@@ -650,11 +648,14 @@ export const assignLiveTradesInternal = async (): Promise<any[]> => {
   }
 };
 
-// Modified pollAndAssignLiveTrades - now only handles polling
+/*
+ * Poll and assign live trades to available payers.
+ * This function is called periodically to keep trades updated.
+ * It checks the database connection and processes trades without assignment.
+ */
 export const pollAndAssignLiveTrades = async () => {
   if (isProcessing) return;
   isProcessing = true;
-
   try {
     const isConnected = await checkDbConnection();
     if (!isConnected) {
@@ -680,6 +681,11 @@ export const pollAndAssignLiveTrades = async () => {
   }
 };
 
+/*
+ * Get live trades from the database.
+ * This endpoint aggregates trades and returns them in a structured format.
+ * It can be used to fetch current trade statuses for monitoring.
+ */
 export const getLiveTrades = async (
   req: Request,
   res: Response,
@@ -693,6 +699,12 @@ export const getLiveTrades = async (
   }
 };
 
+/*
+ * Assign live trades to available payers.
+ * This endpoint processes trades and assigns them to payers in FIFO order.
+ * It updates the trade statuses and emits events for assignments.
+ * It also handles queue management and emits notifications for trade assignments.
+ */
 export const assignLiveTrades = async (
   req: Request,
   res: Response,
@@ -710,7 +722,12 @@ export const assignLiveTrades = async (
   }
 };
 
-// New endpoint to get queue status
+/*
+ * Get the current status of the trade queue.
+ * This endpoint returns the length of the queue, number of assigned trades,
+ * and available payers. It also provides details about queued trades.
+ * Useful for monitoring trade processing and payer availability.
+ */
 export const getTradeQueueStatus = async (
   req: Request,
   res: Response,
@@ -766,9 +783,14 @@ export const getTradeQueueStatus = async (
 
 let isProcessing = false;
 
-// Add property to track last queue processing
+// property to track last queue processing
 (pollAndAssignLiveTrades as any).lastQueueProcess = 0;
 
+/*
+ * Get available payers who are currently clocked in and active.
+ * This function retrieves users with the PAYER type who are clocked in
+ * and have an active shift. It returns them in FIFO order based on creation time.
+ */
 export const getAvailablePayers = async (): Promise<User[]> => {
   const userRepository = dbConnect.getRepository(User);
   const shiftRepository = dbConnect.getRepository(Shift);
@@ -780,7 +802,7 @@ export const getAvailablePayers = async (): Promise<User[]> => {
         clockedIn: true,
         status: "active",
       },
-      order: { createdAt: "ASC" }, // Maintain FIFO order
+      order: { createdAt: "ASC" },
     });
 
     if (activePayerUsers.length === 0) {
@@ -809,6 +831,11 @@ export const getAvailablePayers = async (): Promise<User[]> => {
   }
 };
 
+/*
+ * Mark a trade as paid.
+ * This endpoint updates the trade status to COMPLETED and handles bank deductions.
+ * It also processes the trade queue after marking the trade as paid.
+ */
 export const markTradeAsPaid = async (
   req: Request,
   res: Response,
@@ -823,7 +850,6 @@ export const markTradeAsPaid = async (
       where: { id: tradeId },
       relations: ["assignedPayer"],
     });
-
     if (!trade) return next(new ErrorHandler("Trade not found", 404));
     if (trade.platform !== "paxful" && trade.platform !== "noones") {
       return next(new ErrorHandler("Unsupported platform", 400));
@@ -849,7 +875,6 @@ export const markTradeAsPaid = async (
 
     await svc.markTradeAsPaid(trade.tradeHash);
 
-    // Update trade status in our DB
     trade.status = TradeStatus.COMPLETED;
     trade.completedAt = new Date();
     trade.queuePosition = null;
@@ -874,7 +899,6 @@ export const markTradeAsPaid = async (
       const bank = await bankRepo.findOne({
         where: { shift: { id: activeShift.id } },
       });
-
       if (bank) {
         const amountUsed = trade.amount || 0;
         const remaining = bank.funds - amountUsed;
@@ -908,6 +932,11 @@ export const markTradeAsPaid = async (
   }
 };
 
+/*
+ * Escalate a trade to the customer care team.
+ * This endpoint updates the trade status to ESCALATED and notifies the CC agent.
+ * It also resets the assigned payer and queue position.
+ */
 export const escalateTrade = async (
   req: Request,
   res: Response,
@@ -964,6 +993,11 @@ export const escalateTrade = async (
   }
 };
 
+/*
+ * Reassign a trade to the next available payer.
+ * This endpoint handles trade reassignment logic, including queue management.
+ * It checks for available payers and updates the trade status accordingly.
+ */
 export const reassignTrade = async (
   req: Request,
   res: Response,
@@ -992,10 +1026,8 @@ export const reassignTrade = async (
       );
     }
 
-    // Get available payers
     const availablePayers = await getAvailablePayers();
 
-    // Get all queued trades to determine proper queue position
     const queuedTrades = await tradeRepo.find({
       where: {
         status: TradeStatus.ACTIVE_FUNDED,
@@ -1008,31 +1040,22 @@ export const reassignTrade = async (
     });
 
     if (availablePayers.length === 0) {
-      // No available payers - put the trade in queue
       trade.status = TradeStatus.ACTIVE_FUNDED;
       trade.assignedPayerId = undefined;
       trade.assignedAt = null;
       trade.isEscalated = false;
-
-      // Set queue position as second in line (position 2)
-      // This ensures it doesn't push out currently assigned trades
-      // but gets priority over other waiting trades
       trade.queuePosition = 2;
       trade.queuedAt = new Date();
       trade.lastQueueCheck = new Date();
 
-      // Update queue positions for existing queued trades
-      // Shift them down to accommodate the reassigned trade at position 2
       for (let i = 0; i < queuedTrades.length; i++) {
         const queuedTrade = queuedTrades[i];
         if (queuedTrade.id !== trade.id) {
-          // Shift existing queued trades down by 1 if they were at position 2 or higher
           if (queuedTrade.queuePosition && queuedTrade.queuePosition >= 2) {
             queuedTrade.queuePosition += 1;
             await tradeRepo.save(queuedTrade);
           } else if (!queuedTrade.queuePosition) {
-            // Assign positions to trades that don't have them yet
-            queuedTrade.queuePosition = i + 3; // Start from position 3 since reassigned trade takes position 2
+            queuedTrade.queuePosition = i + 3;
             if (!queuedTrade.queuedAt) {
               queuedTrade.queuedAt = new Date();
             }
@@ -1085,12 +1108,11 @@ export const reassignTrade = async (
     });
 
     if (inFlight) {
-      // Payer is busy - queue the trade with priority position
       trade.status = TradeStatus.ACTIVE_FUNDED;
       trade.assignedPayerId = undefined;
       trade.assignedAt = null;
       trade.isEscalated = false;
-      trade.queuePosition = 2; // Priority position
+      trade.queuePosition = 2;
       trade.queuedAt = new Date();
       trade.lastQueueCheck = new Date();
 
@@ -1107,7 +1129,6 @@ export const reassignTrade = async (
         }
       }
     } else {
-      // Assign immediately to available payer
       trade.status = TradeStatus.ASSIGNED;
       trade.assignedPayerId = nextPayer.id;
       trade.assignedAt = new Date();
@@ -1147,6 +1168,12 @@ export const reassignTrade = async (
   }
 };
 
+/*
+ * Get the trade details for a specific payer.
+ * This endpoint retrieves the most recently assigned trade for a payer,
+ * ensuring it is not in a terminal state (CANCELLED, COMPLETED, etc.).
+ * It returns the trade details along with sanitized platform metadata.
+ */
 export const getPayerTrade = async (
   req: UserRequest,
   res: Response,
@@ -1267,6 +1294,11 @@ export const getPayerTrade = async (
   }
 };
 
+/*
+ * Get all accounts from the database.
+ * This endpoint retrieves account usernames and platforms for all accounts.
+ * It returns a simplified list of accounts without sensitive information.
+ */
 export const getAccounts = async (
   req: Request,
   res: Response,
@@ -1274,7 +1306,6 @@ export const getAccounts = async (
 ) => {
   try {
     const accountRepo = dbConnect.getRepository(Account);
-    // Only select the fields you need (e.g., id, account_username, and platform)
     const accounts = await accountRepo.find({
       select: ["id", "account_username", "platform"],
     });
@@ -1288,15 +1319,18 @@ export const getAccounts = async (
   }
 };
 
+/*
+ * Get feedback statistics for Paxful and Noones accounts.
+ * This endpoint aggregates positive and negative feedback counts
+ * for each account and returns the statistics.
+ * It handles both platforms concurrently and returns a summary.
+ */
 export const getFeedbackStats = async (
   req: Request,
   res: Response,
   next: NextFunction,
 ) => {
   try {
-    console.log("Starting getFeedbackStats controller...");
-
-    // Fetch all accounts
     const accountRepo = dbConnect.getRepository(Account);
     const accounts = await accountRepo.find();
 
@@ -1306,17 +1340,6 @@ export const getFeedbackStats = async (
         account.platform.toLowerCase() === "noones",
     );
 
-    console.log(
-      `Filtered to ${filteredAccounts.length} Paxful/Noones accounts`,
-    );
-    console.log(
-      "Processing accounts:",
-      filteredAccounts.map(
-        (a) => `${a.id}: ${a.platform} (${a.account_username})`,
-      ),
-    );
-
-    // Process each account concurrently
     const statsArray = await Promise.all(
       filteredAccounts.map(async (account) => {
         console.log(
@@ -1328,11 +1351,7 @@ export const getFeedbackStats = async (
         let serviceInitialized = false;
 
         try {
-          // Create the appropriate service instance
           if (lowerPlatform === "noones") {
-            console.log(
-              `Creating NoonesService for ${account.account_username}`,
-            );
             service = new NoonesService({
               apiKey: account.api_key,
               apiSecret: account.api_secret,
@@ -1340,9 +1359,6 @@ export const getFeedbackStats = async (
               label: account.account_username,
             });
           } else if (lowerPlatform === "paxful") {
-            console.log(
-              `Creating PaxfulService for ${account.account_username}`,
-            );
             service = new PaxfulService({
               clientId: account.api_key,
               clientSecret: account.api_secret,
@@ -2723,7 +2739,7 @@ export const getWalletBalances = async (
           balances[service.accountId] = {
             platform: service.platform,
             label: service.label,
-            balances: balance, // This will now be an array with BTC (and USDT for Binance/Noones)
+            balances: balance,
           };
         } catch (error) {
           console.error(`Error fetching balance for ${service.label}:`, error);
@@ -2745,32 +2761,30 @@ export const getWalletBalances = async (
         currency: string,
         platform: string,
       ) => {
-        // Extract the raw balance value - could be string or number
+        // Raw payload value (string or number)
         const raw = balance.free ?? balance.balance;
 
-        // Handle specific conversions for each platform
         let asNumber: number;
-
-        if (platform === "paxful" && currency === "BTC") {
-          // Paxful returns satoshis
-          asNumber =
-            typeof raw === "string"
-              ? Number.parseFloat(raw) / 100000000
-              : raw / 100000000;
+        // Paxful returns satoshis for BTC and micros for USDT
+        if (platform === "paxful") {
+          const divisor =
+            currency === "BTC" ? 1e8 : currency === "USDT" ? 1e6 : 1;
+          const parsed = typeof raw === "string" ? parseFloat(raw) : raw;
+          asNumber = parsed / divisor;
         } else {
-          asNumber = typeof raw === "string" ? Number.parseFloat(raw) : raw;
+          // all other platforms already give you the human‐readable amount
+          asNumber = typeof raw === "string" ? parseFloat(raw) : raw;
         }
 
-        // Get appropriate decimal precision from lookup table
+        // How many decimals you want
         const precision = DECIMALS[currency] ?? 8;
 
-        // For very small numbers, return as string to prevent scientific notation
-        if (asNumber < 0.0001) {
-          return asNumber.toFixed(precision); // Returns string
+        // Prevent scientific notation on tiny amounts
+        if (asNumber < 1 / 10 ** precision) {
+          return asNumber.toFixed(precision);
         }
 
-        // For larger numbers, return as number
-        return Number.parseFloat(asNumber.toFixed(precision));
+        return parseFloat(asNumber.toFixed(precision));
       };
 
       if (balanceData.error) {

@@ -6,7 +6,10 @@ import { Message } from "../models/messages";
 import { User } from "../models/user";
 import ErrorHandler from "../utils/errorHandler";
 
-// Create a new message
+/*
+ * Messages Controller
+ * Handles CRUD operations for messages in chats
+ */
 export const createMessage = async (
   req: UserRequest,
   res: Response,
@@ -23,7 +26,6 @@ export const createMessage = async (
     const chatRepo = dbConnect.getRepository(Chat);
     const messageRepo = dbConnect.getRepository(Message);
 
-    // Find the chat
     const chat = await chatRepo.findOne({
       where: { id: chatId },
       relations: ["participants"],
@@ -32,7 +34,6 @@ export const createMessage = async (
       throw new ErrorHandler("Chat not found", 404);
     }
 
-    // Find the sender (user)
     const sender = await dbConnect
       .getRepository(User)
       .findOne({ where: { id: userId } });
@@ -40,7 +41,6 @@ export const createMessage = async (
       throw new ErrorHandler("User not found", 404);
     }
 
-    // Create a new message
     const message = new Message();
     message.chat = chat;
     message.sender = sender;
@@ -81,7 +81,10 @@ export const createMessage = async (
   }
 };
 
-// Mark a message as seen by the user
+/*
+ * Mark a message as seen
+ * Updates the message's seen status and adds the user to the seenBy list
+ */
 export const markMessageAsSeen = async (
   req: UserRequest,
   res: Response,
@@ -98,7 +101,6 @@ export const markMessageAsSeen = async (
     const messageRepo = dbConnect.getRepository(Message);
     const userRepo = dbConnect.getRepository(User);
 
-    // Find the message
     const message = await messageRepo.findOne({
       where: { id: messageId },
       relations: ["seenBy", "chat", "chat.participants"],
@@ -108,13 +110,11 @@ export const markMessageAsSeen = async (
       throw new ErrorHandler("Message not found", 404);
     }
 
-    // Find the user
     const user = await userRepo.findOne({ where: { id: userId } });
     if (!user) {
       throw new ErrorHandler("User not found", 404);
     }
 
-    // Save the updated message
     const updatedMessage = await messageRepo.save(message);
 
     res.json({
@@ -127,7 +127,10 @@ export const markMessageAsSeen = async (
   }
 };
 
-// Get all messages in a chat
+/*
+ * Get all messages in a specific chat
+ * Returns messages ordered by creation date
+ */
 export const getMessagesInChat = async (
   req: UserRequest,
   res: Response,
@@ -138,7 +141,6 @@ export const getMessagesInChat = async (
 
     const messageRepo = dbConnect.getRepository(Message);
 
-    // Find all messages in the given chat
     const messages = await messageRepo.find({
       where: { chat: { id: chatId } },
       order: { createdAt: "ASC" },
@@ -158,7 +160,10 @@ export const getMessagesInChat = async (
   }
 };
 
-// Get unseen messages for a specific user in a chat
+/*
+ * Get unseen messages for a specific chat
+ * Returns messages that have not been seen by the user
+ */
 export const getUnseenMessages = async (
   req: UserRequest,
   res: Response,
@@ -200,7 +205,10 @@ export const getUnseenMessages = async (
   }
 };
 
-// Get the details of a specific message
+/*
+ * Get details of a specific message
+ * Returns the message details along with sender and seenBy users
+ */
 export const getMessageDetails = async (
   req: UserRequest,
   res: Response,
@@ -211,7 +219,6 @@ export const getMessageDetails = async (
 
     const messageRepo = dbConnect.getRepository(Message);
 
-    // Find the message by its ID
     const message = await messageRepo.findOne({
       where: { id: messageId },
       relations: ["sender", "seenBy", "chat"],
@@ -230,7 +237,10 @@ export const getMessageDetails = async (
   }
 };
 
-// Delete a message
+/*
+ * Delete a specific message
+ * Permanently removes the message from the database
+ */
 export const deleteMessage = async (
   req: UserRequest,
   res: Response,
@@ -241,14 +251,12 @@ export const deleteMessage = async (
 
     const messageRepo = dbConnect.getRepository(Message);
 
-    // Find the message to be deleted
     const message = await messageRepo.findOne({ where: { id: messageId } });
 
     if (!message) {
       throw new ErrorHandler("Message not found", 404);
     }
 
-    // Delete the message
     await messageRepo.remove(message);
 
     res.json({
@@ -260,7 +268,10 @@ export const deleteMessage = async (
   }
 };
 
-// Get All Messages for a specific Chat
+/*
+ * Get all messages in a chat
+ * Ensures the user is a participant of the chat before retrieving messages
+ */
 export const getMessages = async (
   req: UserRequest,
   res: Response,

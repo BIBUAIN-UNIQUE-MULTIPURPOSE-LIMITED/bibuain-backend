@@ -37,7 +37,6 @@ export const createChat = async (
     const userRepo = dbConnect.getRepository(User);
     const chatRepo = dbConnect.getRepository(Chat);
 
-    // Verify that all participants exist in the system
     const users = await userRepo.findBy({
       id: In(participants),
     });
@@ -185,10 +184,8 @@ export const deleteChat = async (
       throw new ErrorHandler("You are not a participant of this chat", 403);
     }
 
-    // Delete all messages in the chat
     await messageRepo.delete({ chat: { id: chatId } });
 
-    // Delete the chat
     await chatRepo.remove(chat);
 
     res.json({

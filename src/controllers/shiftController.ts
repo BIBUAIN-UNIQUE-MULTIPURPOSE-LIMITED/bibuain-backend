@@ -65,7 +65,6 @@ export const clockIn: RequestHandler = async (
     });
 
     if (!currentShift) {
-      // Create a new shift record if none exists
       currentShift = new Shift();
       currentShift.user = user;
       currentShift.shiftType = shiftType;
@@ -131,7 +130,6 @@ export const updateBankStatusDuringShift = async (
   const remaining = bank.funds - amountUsed;
   bank.funds = Math.max(0, remaining);
 
-  // Update status based on remaining funds
   bank.tag = bank.funds > 0 ? BankTag.USED : BankTag.ROLLOVER;
 
   await bankRepo.save(bank);
@@ -176,13 +174,11 @@ export const clockOut: RequestHandler = async (
     const now = new Date();
 
     try {
-      // Update bank status if there's an associated bank
       if (activeShift.bank) {
         const bank = await bankRepo.findOne({
           where: { id: activeShift.bank.id },
         });
         if (bank) {
-          // Change status based on remaining funds
           bank.tag = bank.funds > 0 ? BankTag.FUNDED : BankTag.ROLLOVER;
           bank.shift = undefined;
           await bankRepo.save(bank);
@@ -223,7 +219,6 @@ export const clockOut: RequestHandler = async (
       activeShift.status = ShiftStatus.FORCE_CLOSED;
       activeShift.clockOutTime = now;
       activeShift.isClockedIn = false;
-
       await shiftRepo.save(activeShift);
 
       next(new ErrorHandler("Unexpected error. Shift forcefully ended.", 500));
@@ -238,7 +233,6 @@ export const clockOut: RequestHandler = async (
         relations: ["bank"],
       });
       if (activeShift) {
-        // Update bank status if shift is force closed
         if (activeShift.bank) {
           const bank = await bankRepo.findOne({
             where: { id: activeShift.bank.id },
@@ -249,7 +243,6 @@ export const clockOut: RequestHandler = async (
             await bankRepo.save(bank);
           }
         }
-
         activeShift.status = ShiftStatus.FORCE_CLOSED;
         activeShift.clockOutTime = new Date();
         activeShift.isClockedIn = false;
@@ -385,7 +378,6 @@ export const getShiftMetrics: RequestHandler = async (
     const { startDate, endDate } = req.query;
     const shiftRepo = dbConnect.getRepository(Shift);
 
-    // Build the where condition
     let whereCondition: any = { user: { id: userId } };
     if (startDate && endDate) {
       whereCondition = {

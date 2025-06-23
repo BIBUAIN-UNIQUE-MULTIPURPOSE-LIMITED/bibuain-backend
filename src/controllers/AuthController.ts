@@ -86,7 +86,6 @@ export const login = async (
       throw new ErrorHandler("User account is not active", 403);
     }
 
-    // Generate a 6-digit 2FA code
     const twoFaCode = randomInt(100_000, 1_000_000).toString();
     user.twoFaCode = twoFaCode;
     user.twoFaExpires = new Date(Date.now() + 10 * 60 * 1000);
@@ -327,10 +326,8 @@ export const verifyEmail: RequestHandler = async (req, res, next) => {
       throw new ErrorHandler("Verification code has expired", 400);
     }
 
-    // Hash the password before saving
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Update user record
     user.emailVerificationCode = null;
     user.emailVerificationExp = null;
     user.isEmailVerified = true;
@@ -685,10 +682,8 @@ export const resetPassword: RequestHandler = async (req, res, next) => {
       throw new ErrorHandler("Reset code has expired", 400);
     }
 
-    // Hash the new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    // Update user password and clear reset code/expiration
     user.password = hashedPassword;
     user.emailVerificationCode = null;
     user.emailVerificationExp = null;

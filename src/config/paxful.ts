@@ -68,6 +68,13 @@ export class PaxfulService {
   ): Promise<any> {
     try {
       const response = await this.paxfulApi.invoke(endpoint, data);
+      console.log(
+        `[PaxfulService] Response from ${endpoint} for account ${this.label}:`,
+        {
+          status: response.status,
+          data: response.data,
+        },
+      );
       return response;
     } catch (error: unknown) {
       console.error(`[${this.label}] Request failed:`, {
@@ -176,9 +183,17 @@ export class PaxfulService {
    * @throws {Error} If the API request fails or returns an error.
    */
   async getWalletBalance(cryptoCurrency = "BTC"): Promise<string> {
+    console.log(
+      `[PaxfulService] Fetching ${cryptoCurrency} balance for account: ${this.label}`,
+    );
+
     const response = await this.makeRequest("/paxful/v1/wallet/balance", {
       crypto_currency_code: cryptoCurrency,
     });
+    console.log(
+      `[PaxfulService] ${cryptoCurrency} balance for ${this.label}:`,
+      response.data.balance,
+    );
     return response.data.balance;
   }
 
