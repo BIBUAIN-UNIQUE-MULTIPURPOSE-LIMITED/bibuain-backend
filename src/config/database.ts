@@ -51,6 +51,11 @@ const dbConnect = new DataSource({
     Message,
   ],
   migrations: isProd ? ["dist/migration/**/*.js"] : ["src/migration/**/*.ts"],
+  ssl: isProd
+    ? {
+        rejectUnauthorized: false,
+      }
+    : false,
 });
 
 export default dbConnect;
