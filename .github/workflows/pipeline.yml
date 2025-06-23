@@ -41,12 +41,9 @@ jobs:
       - name: Run TypeORM migrations
         env:
           NODE_ENV: production
-          DB_HOST: ${{ secrets.DB_HOST }}
-          DB_PORT: ${{ secrets.DB_PORT }}
-          DB_NAME: ${{ secrets.DB_NAME }}
-          DB_USER: ${{ secrets.DB_USER }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-        run: npm run typeorm -- migration:run -d dist/config/database.js
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          npm run typeorm -- migration:run -d dist/config/database.js
 
       # - name: Test
       #   run: npm test
